@@ -17,6 +17,7 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [calendarDays, setCalendarDays] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [originalemployeeID, setOriginalemployeeID] = useState("");
 
   // States for reservation modal
   const [showModal, setShowModal] = useState(false);
@@ -31,6 +32,7 @@ function App() {
     attendees: 1,
     organizer: "",
     facility: "Activity Center A",
+    employeeID: "",
   });
 
   // Filter state
@@ -158,6 +160,7 @@ function App() {
   // Handle reservation click to edit or view details
   const handleReservationClick = (reservation) => {
     setSelectedReservation(reservation);
+    setOriginalemployeeID(reservation.employeeID || "");
     setFormData({
       date: formatDate(reservation.date),
       timeStart: reservation.timeStart,
@@ -165,6 +168,7 @@ function App() {
       attendees: reservation.attendees,
       organizer: reservation.organizer,
       facility: reservation.facility,
+      employeeID: "",
     });
     setModalMode("edit");
     setShowModal(true);
@@ -214,6 +218,14 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // For edits, require employee ID to match original
+    if (modalMode === "edit") {
+      if (formData.employeeID !== originalemployeeID) {
+        alert("Employee ID does not match the original reservation");
+        return;
+      }
+    }
+
     // Validate time format
     const timeStartParts = formData.timeStart.split(":");
     const timeEndParts = formData.timeEnd.split(":");
@@ -242,11 +254,12 @@ function App() {
 
     try {
       if (modalMode === "create") {
-        // Add new reservation
+        // Add new reservation with employee ID
         const docRef = await addDoc(collection(db, "reservations"), {
           ...formData,
-          date: formData.date, // Already in YYYY-MM-DD format for Firestore
+          date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
+          employeeID: formData.employeeID, // Include employee ID
         });
 
         // Update local state
@@ -265,6 +278,7 @@ function App() {
           ...formData,
           date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
+          employeeID: originalemployeeID, // Keep original employee ID
         });
 
         // Update local state
@@ -276,6 +290,7 @@ function App() {
                   ...formData,
                   date: new Date(formData.date),
                   attendees: parseInt(formData.attendees, 10) || 1,
+                  employeeID: originalemployeeID, // Keep original
                 }
               : res
           )
@@ -293,6 +308,12 @@ function App() {
   // Handle reservation deletion
   const handleDelete = async () => {
     if (!selectedReservation) return;
+
+    // Require employee ID to match before deletion
+    if (formData.employeeID !== originalemployeeID) {
+      alert("Employee ID does not match the original reservation");
+      return;
+    }
 
     if (window.confirm("Are you sure you want to delete this reservation?")) {
       try {
@@ -564,6 +585,29 @@ function App() {
                   required
                 />
               </div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="employeeID" style={styles.label}>
+                Employee ID
+                {modalMode === "edit" && (
+                  <span style={{ color: "red", marginLeft: "5px" }}>
+                    (required for changes)
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                id="employeeID"
+                name="employeeID"
+                value={formData.employeeID}
+                onChange={handleInputChange}
+                style={styles.input}
+                required={modalMode === "create"}
+                placeholder={
+                  modalMode === "edit" ? "Enter original Employee ID" : ""
+                }
+              />
             </div>
 
             <div style={styles.formActions}>
