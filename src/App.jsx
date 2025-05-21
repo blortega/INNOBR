@@ -9,7 +9,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { db } from "./firebase"; // Import the pre-existing Firebase config
+import { db } from "./firebase";
 
 function App() {
   // States for calendar
@@ -20,7 +20,7 @@ function App() {
 
   // States for reservation modal
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState("create"); // 'create' or 'edit'
+  const [modalMode, setModalMode] = useState("create");
   const [selectedReservation, setSelectedReservation] = useState(null);
 
   // Form states
@@ -664,8 +664,10 @@ const styles = {
   app: {
     display: "flex",
     height: "100vh",
+    width: "100vw", // Add this to ensure full width
     fontFamily: "Roboto, Arial, sans-serif",
     color: "#333",
+    overflow: "hidden", // Prevent scrolling on the main container
   },
   sidebar: {
     width: "280px",
@@ -769,6 +771,7 @@ const styles = {
     flexDirection: "column",
     backgroundColor: "#ffffff",
     overflow: "auto",
+    minWidth: 0, // Add this to prevent flex overflow issues
   },
   calendarHeader: {
     display: "grid",
@@ -784,7 +787,7 @@ const styles = {
   },
   calendarGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(7, 1fr)",
+    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
     gridAutoRows: "minmax(120px, 1fr)",
     flex: "1",
   },
@@ -794,6 +797,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
+    minHeight: "120px",
   },
   dayHeader: {
     display: "flex",
@@ -819,6 +823,7 @@ const styles = {
     gap: "4px",
     overflow: "auto",
     flex: "1",
+    minHeight: 0,
   },
   reservation: {
     borderRadius: "4px",
