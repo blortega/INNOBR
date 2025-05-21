@@ -1,380 +1,904 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import "./App.css";
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Plus, Edit, Trash2, Calendar, Users, Clock, MapPin } from 'lucide-react';
 
 const App = () => {
-  // State variables
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState("month"); // 'month', 'week', or 'day'
-  const [showBookingForm, setShowBookingForm] = useState(false);
-  const [selectedDay, setSelectedDay] = useState(null);
-  const [bookings, setBookings] = useState([]);
-  const [bookingFormData, setBookingFormData] = useState({
-    title: "",
-    room: "",
-    startTime: "",
-    endTime: "",
-    organizer: "",
-    attendees: "",
-    description: "",
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [formData, setFormData] = useState({
+    title: '',
+    location: '',
+    startTime: '',
+    endTime: '',
+    attendees: '',
+    organizer: ''
   });
 
-  // Room data
-  const rooms = [
-    {
-      id: "ac",
-      name: "Activity Center - Main Hall",
-      capacity: 100,
-      color: "#9575cd",
-    },
-    {
-      id: "as",
-      name: "Activity Center - Studio",
-      capacity: 30,
-      color: "#ff8a65",
-    },
-    { id: "c1", name: "Conference Room 1", capacity: 20, color: "#4fc3f7" },
-    { id: "c2", name: "Conference Room 2", capacity: 15, color: "#4db6ac" },
-    { id: "c3", name: "Conference Room 3", capacity: 10, color: "#aed581" },
-    { id: "c4", name: "Conference Room 4", capacity: 8, color: "#fff176" },
-    { id: "c5", name: "Conference Room 5", capacity: 6, color: "#ffb74d" },
-    { id: "c6", name: "Conference Room 6", capacity: 4, color: "#f06292" },
+  const locations = [
+    'Activity Center 1',
+    'Activity Center 2',
+    'Conference Room 1',
+    'Conference Room 2',
+    'Conference Room 3',
+    'Conference Room 4',
+    'Conference Room 5',
+    'Conference Room 6'
   ];
 
-  // Generate calendar days for the current month
-  const generateCalendarDays = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
-    // First day of the month
-    const firstDay = new Date(year, month, 1);
-    const firstDayOfWeek = firstDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const weekdaysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    // Last day of the month
-    const lastDay = new Date(year, month + 1, 0);
-    const lastDate = lastDay.getDate();
+  // Get days in month
+  const getDaysInMonth = (date) => {
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Add all days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(date.getFullYear(), date.getMonth(), i));
+    }
+    
+    return days;
+  };
 
-    // Days from previous month to fill the first row
-    const prevMonthDays = [];
-    const prevMonth = new Date(year, month, 0);
-    const prevMonthLastDate = prevMonth.getDate();
+  // Navigation functions
+  const previousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
 
-    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
-      prevMonthDays.push({
-        date: prevMonthLastDate - i,
-        month: "prev",
-        fullDate: new Date(year, month - 1, prevMonthLastDate - i),
+  const nextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const goToToday = () => {
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDate(today);
+  };
+
+  // Event management
+  const handleDateClick = (date) => {
+    if (!date) return;
+    setSelectedDate(date);
+    openModal();
+  };
+
+  const openModal = (event = null) => {
+    if (event) {
+      setEditingEvent(event);
+      setFormData({
+        title: event.title,
+        location: event.location,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        attendees: event.attendees,
+        organizer: event.organizer
+      });
+    } else {
+      setEditingEvent(null);
+      setFormData({
+        title: '',
+        location: locations[0],
+        startTime: '',
+        endTime: '',
+        attendees: '',
+        organizer: ''
       });
     }
-
-    // Days of the current month
-    const currentMonthDays = [];
-    for (let i = 1; i <= lastDate; i++) {
-      currentMonthDays.push({
-        date: i,
-        month: "current",
-        fullDate: new Date(year, month, i),
-      });
-    }
-
-    // Days from next month to fill the last row
-    const nextMonthDays = [];
-    const daysNeeded = 42 - (prevMonthDays.length + currentMonthDays.length); // 6 rows * 7 days = 42
-
-    for (let i = 1; i <= daysNeeded; i++) {
-      nextMonthDays.push({
-        date: i,
-        month: "next",
-        fullDate: new Date(year, month + 1, i),
-      });
-    }
-
-    return [...prevMonthDays, ...currentMonthDays, ...nextMonthDays];
+    setShowModal(true);
   };
 
-  // Handle month navigation
-  const navigateMonth = (direction) => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(newDate.getMonth() + direction);
-    setCurrentDate(newDate);
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingEvent(null);
   };
 
-  // Format date for display
-  const formatMonth = (date) => {
-    return date.toLocaleString("default", { month: "long", year: "numeric" });
-  };
+  const handleSubmit = () => {
+    if (!formData.title || !formData.startTime || !formData.endTime) return;
 
-  // Handle day selection
-  const handleDayClick = (day) => {
-    setSelectedDay(day);
-    // Could add logic here to show bookings for the selected day
-  };
-
-  // Toggle booking form
-  const toggleBookingForm = () => {
-    setShowBookingForm(!showBookingForm);
-  };
-
-  // Handle form input changes
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setBookingFormData({
-      ...bookingFormData,
-      [name]: value,
-    });
-  };
-
-  // Handle form submission
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    // Create new booking
-    const newBooking = {
-      id: Date.now().toString(),
-      ...bookingFormData,
-      date: selectedDay ? selectedDay.fullDate : new Date(),
+    const newEvent = {
+      id: editingEvent ? editingEvent.id : Date.now().toString(),
+      date: selectedDate.toDateString(),
+      ...formData
     };
 
-    // Add to bookings state
-    setBookings([...bookings, newBooking]);
-
-    // Reset form and close
-    setBookingFormData({
-      title: "",
-      room: "",
-      startTime: "",
-      endTime: "",
-      organizer: "",
-      attendees: "",
-      description: "",
-    });
-    setShowBookingForm(false);
+    if (editingEvent) {
+      setEvents(events.map(event => event.id === editingEvent.id ? newEvent : event));
+    } else {
+      setEvents([...events, newEvent]);
+    }
+    
+    closeModal();
   };
 
-  // Get bookings for a specific day
-  const getBookingsForDay = (day) => {
-    return bookings.filter((booking) => {
-      const bookingDate = new Date(booking.date);
-      return (
-        bookingDate.getDate() === day.date &&
-        bookingDate.getMonth() === day.fullDate.getMonth() &&
-        bookingDate.getFullYear() === day.fullDate.getFullYear()
-      );
-    });
+  const deleteEvent = (eventId) => {
+    setEvents(events.filter(event => event.id !== eventId));
   };
 
-  // Generate calendar
-  const calendarDays = generateCalendarDays();
+  // Get events for a specific date
+  const getEventsForDate = (date) => {
+    if (!date) return [];
+    return events.filter(event => event.date === date.toDateString());
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  const getLocationColor = (location) => {
+    const colors = {
+      'Activity Center 1': '#1a73e8',
+      'Activity Center 2': '#137333',
+      'Conference Room 1': '#9334e6',
+      'Conference Room 2': '#ea8600',
+      'Conference Room 3': '#d93025',
+      'Conference Room 4': '#0d9488',
+      'Conference Room 5': '#c2185b',
+      'Conference Room 6': '#5f6368'
+    };
+    return colors[location] || '#5f6368';
+  };
+
+  const days = getDaysInMonth(currentDate);
 
   return (
-    <div className="booking-calendar">
-      <div className="booking-header">
-        <h1>Booking Calendar</h1>
-        <h2>Activity Center & Conference Rooms</h2>
-        <button className="new-booking-btn" onClick={toggleBookingForm}>
-          + New Booking
-        </button>
-      </div>
-
-      <div className="calendar-navigation">
-        <button onClick={() => navigateMonth(-1)}>&lt;</button>
-        <h2>{formatMonth(currentDate)}</h2>
-        <button onClick={() => navigateMonth(1)}>&gt;</button>
-
-        <div className="view-options">
-          <button
-            className={view === "month" ? "active" : ""}
-            onClick={() => setView("month")}
-          >
-            Month
-          </button>
-          <button
-            className={view === "week" ? "active" : ""}
-            onClick={() => setView("week")}
-          >
-            Week
-          </button>
-          <button
-            className={view === "day" ? "active" : ""}
-            onClick={() => setView("day")}
-          >
-            Day
-          </button>
-        </div>
-      </div>
-
-      <div className="calendar-grid">
-        <div className="calendar-header">
-          <div>Sun</div>
-          <div>Mon</div>
-          <div>Tue</div>
-          <div>Wed</div>
-          <div>Thu</div>
-          <div>Fri</div>
-          <div>Sat</div>
-        </div>
-
-        <div className="calendar-body">
-          {calendarDays.map((day, index) => (
-            <div
-              key={index}
-              className={`calendar-day ${day.month} ${
-                selectedDay &&
-                day.date === selectedDay.date &&
-                day.month === selectedDay.month
-                  ? "selected"
-                  : ""
-              }`}
-              onClick={() => handleDayClick(day)}
+     <div style={{ 
+      height: '100vh', // Changed from minHeight to height
+      width: '100vw', // Ensure full viewport width
+      backgroundColor: '#ffffff', 
+      fontFamily: 'Google Sans, Arial, sans-serif',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden' // Prevent double scrollbars
+    }}>
+      {/* Header */}
+      <header style={{ 
+        borderBottom: '1px solid #dadce0', 
+        padding: '8px 24px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        backgroundColor: '#ffffff',
+        minHeight: '64px',
+        flexShrink: 0, 
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button
+              onClick={goToToday}
+              style={{ 
+                padding: '10px 24px', 
+                border: '1px solid #dadce0', 
+                borderRadius: '4px', 
+                backgroundColor: '#ffffff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#3c4043',
+                transition: 'box-shadow 0.2s, background-color 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#f8f9fa';
+                e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#ffffff';
+                e.target.style.boxShadow = 'none';
+              }}
             >
-              <div className="day-number">{day.date}</div>
-              <div className="day-events">
-                {getBookingsForDay(day).map((booking) => (
-                  <div
-                    key={booking.id}
-                    className="booking-item"
-                    style={{
-                      backgroundColor:
-                        rooms.find((r) => r.id === booking.room)?.color ||
-                        "#4285f4",
-                    }}
-                  >
-                    {booking.title}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="rooms-section">
-        <h2>Rooms & Spaces</h2>
-        <div className="rooms-grid">
-          {rooms.map((room) => (
-            <div
-              key={room.id}
-              className="room-card"
-              style={{ borderLeft: `4px solid ${room.color}` }}
-            >
-              <h3>{room.name}</h3>
-              <p>Capacity: {room.capacity}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {showBookingForm && (
-        <div className="booking-form-overlay">
-          <div className="booking-form">
-            <div className="form-header">
-              <h2>Book Room</h2>
-              <button className="close-btn" onClick={toggleBookingForm}>
-                ×
+              Today
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={previousMonth}
+                style={{ 
+                  padding: '8px', 
+                  border: 'none',
+                  borderRadius: '50%',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f3f4'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              >
+                <ChevronLeft size={18} color="#5f6368" />
+              </button>
+              <button
+                onClick={nextMonth}
+                style={{ 
+                  padding: '8px', 
+                  border: 'none',
+                  borderRadius: '50%',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f3f4'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              >
+                <ChevronRight size={18} color="#5f6368" />
               </button>
             </div>
+            <h1 style={{ 
+              fontSize: '22px', 
+              fontWeight: '400', 
+              color: '#3c4043', 
+              margin: 0,
+              lineHeight: '28px'
+            }}>
+              {months[currentDate.getMonth()]} {currentDate.getFullYear()}
+            </h1>
+          </div>
+        </div>
+        <button
+          onClick={() => openModal()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#1a73e8',
+            color: '#ffffff',
+            padding: '10px 24px',
+            borderRadius: '24px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            transition: 'background-color 0.2s, box-shadow 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = '#1557b0';
+            e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = '#1a73e8';
+            e.target.style.boxShadow = 'none';
+          }}
+        >
+          <Plus size={16} />
+          <span>Create</span>
+        </button>
+      </header>
 
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label>Title</label>
-                <input
-                  type="text"
-                  name="title"
-                  placeholder="Enter booking title"
-                  value={bookingFormData.title}
-                  onChange={handleInputChange}
-                  required
-                />
+      <div style={{ 
+        display: 'flex', 
+        flex: 1, 
+        overflow: 'hidden',
+        width: '100%' 
+      }}>
+        {/* Sidebar */}
+         <div style={{ 
+          width: '280px', 
+          minWidth: '280px', // Prevent sidebar from shrinking
+          borderRight: '1px solid #dadce0', 
+          padding: '20px 16px',
+          backgroundColor: '#ffffff',
+          overflowY: 'auto',
+          height: '100%' // Take full available height
+        }}>
+          <div style={{ marginBottom: '32px' }}>
+            <h3 style={{ 
+              fontSize: '14px', 
+              fontWeight: '500', 
+              color: '#3c4043', 
+              marginBottom: '16px',
+              margin: '0 0 16px 0'
+            }}>
+              {months[currentDate.getMonth()]} {currentDate.getFullYear()}
+            </h3>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(7, 1fr)', 
+              gap: '2px', 
+              fontSize: '12px',
+              marginBottom: '8px'
+            }}>
+              {weekdaysShort.map(day => (
+                <div key={day} style={{ 
+                  padding: '8px 0', 
+                  textAlign: 'center',
+                  color: '#5f6368',
+                  fontWeight: '500'
+                }}>
+                  {day.charAt(0)}
+                </div>
+              ))}
+            </div>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(7, 1fr)', 
+              gap: '2px'
+            }}>
+              {days.map((day, index) => {
+                const isToday = day && day.toDateString() === new Date().toDateString();
+                const isSelected = day && day.toDateString() === selectedDate.toDateString();
+                
+                return (
+                  <button
+                    key={index}
+                    onClick={() => day && setSelectedDate(day)}
+                    style={{
+                      padding: '8px 0',
+                      fontSize: '13px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      border: 'none',
+                      cursor: day ? 'pointer' : 'default',
+                      backgroundColor: isSelected && !isToday
+                        ? '#1a73e8'
+                        : isToday
+                        ? '#1a73e8'
+                        : 'transparent',
+                      color: isSelected || isToday
+                        ? '#ffffff'
+                        : day 
+                        ? '#3c4043' 
+                        : '#dadce0',
+                      transition: 'background-color 0.2s',
+                      fontWeight: isToday ? '500' : '400',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (day && !isSelected && !isToday) {
+                        e.target.style.backgroundColor = '#f1f3f4';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (day && !isSelected && !isToday) {
+                        e.target.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    {day ? day.getDate() : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ 
+              fontSize: '14px', 
+              fontWeight: '500', 
+              color: '#3c4043', 
+              marginBottom: '16px',
+              margin: '0 0 16px 0'
+            }}>
+              My calendars
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {locations.map(location => (
+                <div key={location} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  fontSize: '14px',
+                  padding: '4px 0'
+                }}>
+                  <div style={{ 
+                    width: '10px', 
+                    height: '10px', 
+                    borderRadius: '50%', 
+                    backgroundColor: getLocationColor(location),
+                    flexShrink: 0
+                  }}></div>
+                  <span style={{ 
+                    color: '#3c4043',
+                    fontSize: '14px',
+                    lineHeight: '20px'
+                  }}>
+                    {location}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Main Calendar */}
+        <div style={{ 
+          flex: 1, 
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#ffffff',
+          overflow: 'auto', // Allow scrolling only for calendar
+          minWidth: 0 // Fix flexbox overflow issue
+        }}>
+          {/* Calendar Header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            borderBottom: '1px solid #dadce0',
+            backgroundColor: '#ffffff',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+            flexShrink: 0
+          }}>
+            {weekdays.map(day => (
+              <div key={day} style={{
+                padding: '12px 8px',
+                textAlign: 'center',
+                fontSize: '11px',
+                fontWeight: '500',
+                color: '#70757a',
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                borderRight: day !== 'Saturday' ? '1px solid #dadce0' : 'none'
+              }}>
+                {day.substring(0, 3)}
               </div>
-
-              <div className="form-group">
-                <label>Room/Space</label>
-                <select
-                  name="room"
-                  value={bookingFormData.room}
-                  onChange={handleInputChange}
-                  required
+            ))}
+          </div>
+          
+          {/* Calendar Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', // Equal width columns
+            gridAutoRows: '1fr', // Equal height rows
+            flex: 1,
+            backgroundColor: '#ffffff',
+            minHeight: '600px' // Ensure minimum height
+          }}>
+            {days.map((day, index) => {
+              const dayEvents = getEventsForDate(day);
+              const isToday = day && day.toDateString() === new Date().toDateString();
+              const isSelected = day && day.toDateString() === selectedDate.toDateString();
+              const isWeekend = day && (day.getDay() === 0 || day.getDay() === 6);
+              
+              return (
+                <div
+                  key={index}
+                  onClick={() => handleDateClick(day)}
+                  style={{
+                    minHeight: '120px',
+                    padding: '8px',
+                    cursor: day ? 'pointer' : 'default',
+                    border: '1px solid #dadce0',
+                    borderTop: 'none',
+                    borderLeft: index % 7 === 0 ? '1px solid #dadce0' : 'none',
+                    backgroundColor: '#ffffff',
+                    transition: 'background-color 0.2s',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    position: 'relative' // For absolute positioning of content
+                  }}
+                  onMouseEnter={(e) => {
+                    if (day) e.target.style.backgroundColor = '#f8f9fa';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (day) e.target.style.backgroundColor = '#ffffff';
+                  }}
                 >
-                  <option value="">Select a room</option>
-                  {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
-                      {room.name}
-                    </option>
-                  ))}
-                </select>
+                  {day && (
+                    <>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'flex-start',
+                        alignItems: 'center',
+                        marginBottom: '4px'
+                      }}>
+                        <span style={{
+                          fontSize: '26px',
+                          color: isToday ? '#1a73e8' : '#3c4043',
+                          fontWeight: isToday ? '500' : '400',
+                          lineHeight: '32px'
+                        }}>
+                          {day.getDate()}
+                        </span>
+                      </div>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '2px',
+                        flex: 1
+                      }}>
+                        {dayEvents.slice(0, 3).map(event => (
+                          <div
+                            key={event.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openModal(event);
+                            }}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              backgroundColor: getLocationColor(event.location),
+                              color: '#ffffff',
+                              transition: 'opacity 0.2s',
+                              border: `1px solid ${getLocationColor(event.location)}`,
+                              marginBottom: '1px'
+                            }}
+                            onMouseEnter={(e) => e.target.style.opacity = '0.9'}
+                            onMouseLeave={(e) => e.target.style.opacity = '1'}
+                          >
+                            <div style={{ 
+                              whiteSpace: 'nowrap', 
+                              overflow: 'hidden', 
+                              textOverflow: 'ellipsis',
+                              fontWeight: '500'
+                            }}>
+                              {formatTime(event.startTime)} {event.title}
+                            </div>
+                          </div>
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <div style={{ 
+                            fontSize: '12px', 
+                            color: '#5f6368',
+                            padding: '2px 8px',
+                            cursor: 'pointer'
+                          }}>
+                            +{dayEvents.length - 3} more
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '8px',
+            boxShadow: '0 8px 10px 1px rgba(0,0,0,.14), 0 3px 14px 2px rgba(0,0,0,.12), 0 5px 5px -3px rgba(0,0,0,.2)',
+            width: '540px',
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }}>
+            <div style={{ padding: '24px' }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                marginBottom: '24px' 
+              }}>
+                <h2 style={{ 
+                  fontSize: '22px', 
+                  fontWeight: '400', 
+                  color: '#3c4043', 
+                  margin: 0 
+                }}>
+                  {editingEvent ? 'Edit Event' : 'New Event'}
+                </h2>
+                {editingEvent && (
+                  <button
+                    onClick={() => {
+                      deleteEvent(editingEvent.id);
+                      closeModal();
+                    }}
+                    style={{
+                      padding: '8px',
+                      color: '#ea4335',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#fce8e6'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Start Time</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '14px', 
+                    fontWeight: '500', 
+                    color: '#3c4043', 
+                    marginBottom: '8px' 
+                  }}>
+                    Add title
+                  </label>
                   <input
-                    type="time"
-                    name="startTime"
-                    value={bookingFormData.startTime}
-                    onChange={handleInputChange}
-                    required
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid #dadce0',
+                      borderRadius: '4px',
+                      fontSize: '16px',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                    placeholder="Add title"
                   />
                 </div>
 
-                <div className="form-group">
-                  <label>End Time</label>
+                <div>
+                  <label style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '14px', 
+                    fontWeight: '500', 
+                    color: '#3c4043', 
+                    marginBottom: '8px',
+                    gap: '8px'
+                  }}>
+                    <MapPin size={16} />
+                    Location
+                  </label>
+                  <select
+                    value={formData.location}
+                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid #dadce0',
+                      borderRadius: '4px',
+                      fontSize: '16px',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box',
+                      backgroundColor: '#ffffff',
+                      fontFamily: 'inherit'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                  >
+                    {locations.map(location => (
+                      <option key={location} value={location}>{location}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      fontSize: '14px', 
+                      fontWeight: '500', 
+                      color: '#3c4043', 
+                      marginBottom: '8px',
+                      gap: '8px'
+                    }}>
+                      <Clock size={16} />
+                      Start time
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({...formData, startTime: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #dadce0',
+                        borderRadius: '4px',
+                        fontSize: '16px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                      onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      fontSize: '14px', 
+                      fontWeight: '500', 
+                      color: '#3c4043', 
+                      marginBottom: '8px' 
+                    }}>
+                      End time
+                    </label>
+                    <input
+                      type="time"
+                      value={formData.endTime}
+                      onChange={(e) => setFormData({...formData, endTime: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #dadce0',
+                        borderRadius: '4px',
+                        fontSize: '16px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                      onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '14px', 
+                    fontWeight: '500', 
+                    color: '#3c4043', 
+                    marginBottom: '8px',
+                    gap: '8px'
+                  }}>
+                    <Users size={16} />
+                    Number of attendees
+                  </label>
                   <input
-                    type="time"
-                    name="endTime"
-                    value={bookingFormData.endTime}
-                    onChange={handleInputChange}
-                    required
+                    type="number"
+                    value={formData.attendees}
+                    onChange={(e) => setFormData({...formData, attendees: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid #dadce0',
+                      borderRadius: '4px',
+                      fontSize: '16px',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                    placeholder="0"
+                    min="0"
                   />
                 </div>
-              </div>
 
-              <div className="form-group">
-                <label>Organizer</label>
-                <input
-                  type="text"
-                  name="organizer"
-                  placeholder="Your name"
-                  value={bookingFormData.organizer}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '14px', 
+                    fontWeight: '500', 
+                    color: '#3c4043', 
+                    marginBottom: '8px' 
+                  }}>
+                    Organizer name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.organizer}
+                    onChange={(e) => setFormData({...formData, organizer: e.target.value})}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid #dadce0',
+                      borderRadius: '4px',
+                      fontSize: '16px',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
+                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
+                    placeholder="Your name"
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>Number of Attendees</label>
-                <input
-                  type="number"
-                  name="attendees"
-                  placeholder="Expected attendees"
-                  value={bookingFormData.attendees}
-                  onChange={handleInputChange}
-                  required
-                />
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  paddingTop: '16px',
+                  justifyContent: 'flex-end'
+                }}>
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    style={{
+                      padding: '10px 24px',
+                      border: '1px solid #dadce0',
+                      color: '#1a73e8',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '4px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      transition: 'background-color 0.2s, box-shadow 0.2s',
+                      fontFamily: 'inherit'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#f8f9fa';
+                      e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = '#ffffff';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    style={{
+                      backgroundColor: '#1a73e8',
+                      color: '#ffffff',
+                      padding: '10px 24px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      transition: 'background-color 0.2s, box-shadow 0.2s',
+                      fontFamily: 'inherit'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#1557b0';
+                      e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = '#1a73e8';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                  >
+                    {editingEvent ? 'Save' : 'Save'}
+                  </button>
+                </div>
               </div>
-
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  name="description"
-                  placeholder="Brief description of the event"
-                  value={bookingFormData.description}
-                  onChange={handleInputChange}
-                ></textarea>
-              </div>
-
-              <div className="form-actions">
-                <button type="submit" className="submit-btn">
-                  Book Room
-                </button>
-                <button
-                  type="button"
-                  className="cancel-btn"
-                  onClick={toggleBookingForm}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

@@ -1,367 +1,162 @@
-/* BookingCalendar.css - Improved Responsive Layout */
-
-.booking-calendar {
-  font-family: Arial, sans-serif;
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 20px;
+/* App.css */
+* {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  color: #000;
 }
 
-.booking-header {
+body {
+  background-color: #f9f9f9;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 300px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-right: 1px solid #ddd;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  border-bottom: 1px solid #e0e0e0;
-  padding-bottom: 15px;
-  position: relative;
-  width: 100%;
 }
 
-.booking-header h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.booking-header h2 {
-  margin: 5px 0 0;
-  font-size: 16px;
-  font-weight: normal;
-  color: #666;
-}
-
-.new-booking-btn {
-  position: absolute;
-  right: 0;
-  top: 10px;
-  background-color: #4285f4;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 15px;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.new-booking-btn:hover {
-  background-color: #3367d6;
-}
-
-.calendar-navigation {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-  position: relative;
-  width: 100%;
-}
-
-.calendar-navigation button {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 5px 10px;
-  margin: 0 5px;
-}
-
-.calendar-navigation h2 {
-  margin: 0 20px;
-  font-size: 20px;
-}
-
-.view-options {
-  position: absolute;
-  right: 0;
-  display: flex;
-  background-color: #f1f3f4;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.view-options button {
-  background: none;
-  border: none;
-  padding: 8px 15px;
-  margin: 0;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.view-options button.active {
-  background-color: #4285f4;
-  color: white;
-}
-
-.calendar-grid {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  overflow: hidden;
-  width: 100%;
-}
-
-.calendar-header {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e0e0e0;
-  width: 100%;
-}
-
-.calendar-header div {
-  padding: 10px;
-  text-align: center;
-  font-weight: bold;
-  color: #5f6368;
-}
-
-.calendar-body {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: minmax(100px, auto);
-  width: 100%;
-}
-
-.calendar-day {
-  border: 1px solid #e0e0e0;
-  padding: 5px;
-  min-height: 100px;
-  position: relative;
-  background-color: white;
-  cursor: pointer;
-}
-
-.calendar-day:hover {
-  background-color: #f8f9fa;
-}
-
-.calendar-day.prev,
-.calendar-day.next {
-  background-color: #f8f9fa;
-  color: #9aa0a6;
-}
-
-.calendar-day.selected {
-  border: 2px solid #4285f4;
-}
-
-.day-number {
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-
-.day-events {
-  overflow: hidden;
-}
-
-.booking-item {
-  margin: 2px 0;
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-size: 12px;
-  color: white;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rooms-section {
-  margin-top: 30px;
-  width: 100%;
-}
-
-.rooms-section h2 {
-  margin-bottom: 15px;
-  font-size: 20px;
-}
-
-.rooms-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
-  width: 100%;
-}
-
-.room-card {
-  background-color: white;
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  padding: 15px;
-}
-
-.room-card h3 {
-  margin: 0 0 10px;
-  font-size: 16px;
-}
-
-.room-card p {
-  margin: 0;
-  color: #5f6368;
-  font-size: 14px;
-}
-
-/* Booking Form */
-.booking-form-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.booking-form {
-  background-color: white;
-  border-radius: 8px;
-  width: 500px;
-  max-width: 90%;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 20px;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.form-header h2 {
-  margin: 0;
+.sidebar-header {
+  color: #333;
   font-size: 18px;
+  margin-bottom: 10px;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #5f6368;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-row {
-  display: flex;
-  gap: 15px;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-form {
-  padding: 20px;
-}
-
-label {
+.sidebar-form label {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
   font-weight: bold;
   font-size: 14px;
 }
 
-input,
-select,
-textarea {
+.sidebar-form select,
+.sidebar-form textarea {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #e0e0e0;
+  padding: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.sidebar-form textarea {
+  height: 120px;
+}
+
+button {
+  padding: 12px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
   border-radius: 4px;
   font-size: 14px;
-  box-sizing: border-box;
+  cursor: pointer;
 }
 
-textarea {
-  min-height: 100px;
-  resize: vertical;
+button:hover {
+  background-color: #45a049;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+.booking-list {
+  list-style: none;
   margin-top: 20px;
 }
 
-.submit-btn {
-  background-color: #4285f4;
+.booking-list li {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.calendar {
+  flex-grow: 1;
+  padding: 20px;
+  background-color: #ffffff;
+  overflow: auto;
+}
+
+.calendar-header h1 {
+  color: #333;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  padding: 5px;
+}
+
+.calendar-week {
+  display: flex;
+  justify-content: space-between;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  height: 120px; /* Equal height for square */
+  width: 100%;   /* Full width of grid column */
+  padding: 10px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  position: relative;
+  font-size: 16px;
+  background-color: #f9f9f9;
+  transition: background-color 0.3s ease;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.calendar-day.clickable:hover {
+  background-color: #f1f1f1;
+}
+
+.event-tag {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  font-size: 10px;
   color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 20px;
-  font-size: 14px;
-  cursor: pointer;
+  background-color: #4caf50;
+  padding: 2px 5px;
+  border-radius: 3px;
 }
 
-.submit-btn:hover {
-  background-color: #3367d6;
-}
-
-.cancel-btn {
-  background-color: #f1f3f4;
-  color: #5f6368;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 20px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.cancel-btn:hover {
-  background-color: #e8eaed;
-}
-
-/* Media Queries for Responsive Design */
-@media screen and (max-width: 768px) {
-  .rooms-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  }
-
-  .calendar-navigation {
-    flex-wrap: wrap;
-  }
-
-  .view-options {
-    position: relative;
-    margin-top: 10px;
-    width: 100%;
-    justify-content: center;
-  }
-
-  .new-booking-btn {
-    position: relative;
-    margin-top: 10px;
-    align-self: flex-end;
-  }
-
-  .booking-header {
-    align-items: flex-start;
-  }
-}
-
-@media screen and (max-width: 480px) {
-  .calendar-day {
-    min-height: 80px;
-    padding: 3px;
-  }
-
-  .rooms-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-row {
+@media (max-width: 768px) {
+  .app {
     flex-direction: column;
-    gap: 5px;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+  }
+
+  .calendar {
+    padding: 10px;
+  }
+
+  .calendar-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .calendar-day {
+    height: 100px;
+    padding: 8px;
+    font-size: 14px;
   }
 }
+
