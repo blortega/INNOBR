@@ -1,909 +1,938 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Edit, Trash2, Calendar, Users, Clock, MapPin } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "./firebase"; // Import the pre-existing Firebase config
 
-const App = () => {
+function App() {
+  // States for calendar
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [calendarDays, setCalendarDays] = useState([]);
+  const [reservations, setReservations] = useState([]);
+
+  // States for reservation modal
   const [showModal, setShowModal] = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null);
-  const [events, setEvents] = useState([]);
+  const [modalMode, setModalMode] = useState("create"); // 'create' or 'edit'
+  const [selectedReservation, setSelectedReservation] = useState(null);
+
+  // Form states
   const [formData, setFormData] = useState({
-    title: '',
-    location: '',
-    startTime: '',
-    endTime: '',
-    attendees: '',
-    organizer: ''
+    date: "",
+    timeStart: "09:00",
+    timeEnd: "10:00",
+    attendees: 1,
+    organizer: "",
+    facility: "Activity Center A",
   });
 
-  const locations = [
-    'Activity Center 1',
-    'Activity Center 2',
-    'Conference Room 1',
-    'Conference Room 2',
-    'Conference Room 3',
-    'Conference Room 4',
-    'Conference Room 5',
-    'Conference Room 6'
+  // Filter state
+  const [facilityFilter, setFacilityFilter] = useState("all");
+
+  // List of available facilities
+  const facilities = [
+    "Activity Center A",
+    "Activity Center B",
+    "Conference Room 1",
+    "Conference Room 2",
+    "Conference Room 3",
+    "Conference Room 4",
+    "Conference Room 5",
+    "Conference Room 6",
   ];
 
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
+  // Initialize and fetch data
+  useEffect(() => {
+    generateCalendarDays(currentDate);
+    fetchReservations();
+  }, [currentDate]);
 
-  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const weekdaysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // Generate calendar days for the current month view
+  const generateCalendarDays = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
 
-  // Get days in month
-  const getDaysInMonth = (date) => {
-    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    const daysInMonth = lastDay.getDate();
+    // First day of the month
+    const firstDay = new Date(year, month, 1);
+    // Day of the week (0-6, 0 is Sunday)
     const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(null);
+
+    // Last day of the month
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+
+    // Calendar rows need 42 blocks (6 rows x 7 days) for consistency
+    const calendarCells = [];
+
+    // Previous month's days to fill the first row
+    const prevMonth = new Date(year, month, 0);
+    const prevMonthDays = prevMonth.getDate();
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      calendarCells.push({
+        date: new Date(year, month - 1, prevMonthDays - i),
+        currentMonth: false,
+      });
     }
-    
-    // Add all days of the month
+
+    // Current month's days
     for (let i = 1; i <= daysInMonth; i++) {
-      days.push(new Date(date.getFullYear(), date.getMonth(), i));
+      calendarCells.push({
+        date: new Date(year, month, i),
+        currentMonth: true,
+      });
     }
-    
-    return days;
+
+    // Next month's days to fill the remaining cells
+    const remainingCells = 42 - calendarCells.length;
+    for (let i = 1; i <= remainingCells; i++) {
+      calendarCells.push({
+        date: new Date(year, month + 1, i),
+        currentMonth: false,
+      });
+    }
+
+    setCalendarDays(calendarCells);
   };
 
-  // Navigation functions
-  const previousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  // Format date to YYYY-MM-DD
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  // Format date for display
+  const formatDateDisplay = (date) => {
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   };
 
-  const goToToday = () => {
+  // Fetch all reservations from Firestore
+  const fetchReservations = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "reservations"));
+      const reservationData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        date: new Date(doc.data().date),
+      }));
+      setReservations(reservationData);
+    } catch (error) {
+      console.error("Error fetching reservations:", error);
+    }
+  };
+
+  // Handle day click to create a new reservation
+  const handleDayClick = (day) => {
     const today = new Date();
-    setCurrentDate(today);
-    setSelectedDate(today);
-  };
+    today.setHours(0, 0, 0, 0);
 
-  // Event management
-  const handleDateClick = (date) => {
-    if (!date) return;
-    setSelectedDate(date);
-    openModal();
-  };
-
-  const openModal = (event = null) => {
-    if (event) {
-      setEditingEvent(event);
-      setFormData({
-        title: event.title,
-        location: event.location,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        attendees: event.attendees,
-        organizer: event.organizer
-      });
-    } else {
-      setEditingEvent(null);
-      setFormData({
-        title: '',
-        location: locations[0],
-        startTime: '',
-        endTime: '',
-        attendees: '',
-        organizer: ''
-      });
+    // Cannot book past dates
+    if (day.date < today) {
+      alert("Cannot book dates in the past");
+      return;
     }
+
+    setSelectedDate(day.date);
+
+    setFormData({
+      ...formData,
+      date: formatDate(day.date),
+    });
+
+    setModalMode("create");
     setShowModal(true);
   };
 
-  const closeModal = () => {
-    setShowModal(false);
-    setEditingEvent(null);
+  // Handle reservation click to edit or view details
+  const handleReservationClick = (reservation) => {
+    setSelectedReservation(reservation);
+    setFormData({
+      date: formatDate(reservation.date),
+      timeStart: reservation.timeStart,
+      timeEnd: reservation.timeEnd,
+      attendees: reservation.attendees,
+      organizer: reservation.organizer,
+      facility: reservation.facility,
+    });
+    setModalMode("edit");
+    setShowModal(true);
   };
 
-  const handleSubmit = () => {
-    if (!formData.title || !formData.startTime || !formData.endTime) return;
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: name === "attendees" ? parseInt(value, 10) || 0 : value,
+    });
+  };
 
-    const newEvent = {
-      id: editingEvent ? editingEvent.id : Date.now().toString(),
-      date: selectedDate.toDateString(),
-      ...formData
-    };
+  // Check if time is available for booking
+  const isTimeSlotAvailable = async () => {
+    const { date, timeStart, timeEnd, facility } = formData;
 
-    if (editingEvent) {
-      setEvents(events.map(event => event.id === editingEvent.id ? newEvent : event));
-    } else {
-      setEvents([...events, newEvent]);
+    // If editing, exclude the current reservation
+    const reservationsToCheck = reservations.filter((res) => {
+      if (modalMode === "edit" && selectedReservation) {
+        return res.id !== selectedReservation.id;
+      }
+      return true;
+    });
+
+    // Check for conflicts
+    const conflicts = reservationsToCheck.filter((res) => {
+      const sameDate = formatDate(res.date) === date;
+      const sameFacility = res.facility === facility;
+
+      if (!sameDate || !sameFacility) return false;
+
+      const startA = timeStart;
+      const endA = timeEnd;
+      const startB = res.timeStart;
+      const endB = res.timeEnd;
+
+      // Check if time ranges overlap
+      return startA < endB && endA > startB;
+    });
+
+    return conflicts.length === 0;
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Validate time format
+    const timeStartParts = formData.timeStart.split(":");
+    const timeEndParts = formData.timeEnd.split(":");
+    const startTime = new Date();
+    startTime.setHours(
+      parseInt(timeStartParts[0], 10),
+      parseInt(timeStartParts[1], 10)
+    );
+    const endTime = new Date();
+    endTime.setHours(
+      parseInt(timeEndParts[0], 10),
+      parseInt(timeEndParts[1], 10)
+    );
+
+    if (endTime <= startTime) {
+      alert("End time must be after start time");
+      return;
     }
-    
-    closeModal();
+
+    // Check for conflicts
+    const isAvailable = await isTimeSlotAvailable();
+    if (!isAvailable) {
+      alert("This time slot is already booked for the selected facility");
+      return;
+    }
+
+    try {
+      if (modalMode === "create") {
+        // Add new reservation
+        const docRef = await addDoc(collection(db, "reservations"), {
+          ...formData,
+          date: formData.date, // Already in YYYY-MM-DD format for Firestore
+          attendees: parseInt(formData.attendees, 10) || 1,
+        });
+
+        // Update local state
+        setReservations([
+          ...reservations,
+          {
+            id: docRef.id,
+            ...formData,
+            date: new Date(formData.date),
+            attendees: parseInt(formData.attendees, 10) || 1,
+          },
+        ]);
+      } else if (modalMode === "edit" && selectedReservation) {
+        // Update existing reservation
+        await updateDoc(doc(db, "reservations", selectedReservation.id), {
+          ...formData,
+          date: formData.date,
+          attendees: parseInt(formData.attendees, 10) || 1,
+        });
+
+        // Update local state
+        setReservations(
+          reservations.map((res) =>
+            res.id === selectedReservation.id
+              ? {
+                  ...res,
+                  ...formData,
+                  date: new Date(formData.date),
+                  attendees: parseInt(formData.attendees, 10) || 1,
+                }
+              : res
+          )
+        );
+      }
+
+      setShowModal(false);
+      resetForm();
+    } catch (error) {
+      console.error("Error saving reservation:", error);
+      alert("Error saving reservation. Please try again.");
+    }
   };
 
-  const deleteEvent = (eventId) => {
-    setEvents(events.filter(event => event.id !== eventId));
+  // Handle reservation deletion
+  const handleDelete = async () => {
+    if (!selectedReservation) return;
+
+    if (window.confirm("Are you sure you want to delete this reservation?")) {
+      try {
+        await deleteDoc(doc(db, "reservations", selectedReservation.id));
+
+        // Update local state
+        setReservations(
+          reservations.filter((res) => res.id !== selectedReservation.id)
+        );
+
+        setShowModal(false);
+        resetForm();
+      } catch (error) {
+        console.error("Error deleting reservation:", error);
+        alert("Error deleting reservation. Please try again.");
+      }
+    }
   };
 
-  // Get events for a specific date
-  const getEventsForDate = (date) => {
-    if (!date) return [];
-    return events.filter(event => event.date === date.toDateString());
+  // Reset form to default values
+  const resetForm = () => {
+    setFormData({
+      date: selectedDate ? formatDate(selectedDate) : "",
+      timeStart: "09:00",
+      timeEnd: "10:00",
+      attendees: 1,
+      organizer: "",
+      facility: "Activity Center A",
+    });
+    setSelectedReservation(null);
   };
 
-  const formatTime = (time) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
+  // Navigate to previous month
+  const prevMonth = () => {
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
+    );
   };
 
-  const getLocationColor = (location) => {
+  // Navigate to next month
+  const nextMonth = () => {
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
+    );
+  };
+
+  // Navigate to today
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Check if a date has reservations
+  const getDateReservations = (date) => {
+    const dateStr = formatDate(date);
+    return reservations.filter((res) => formatDate(res.date) === dateStr);
+  };
+
+  // Filter reservations by facility
+  const getFilteredReservations = (date) => {
+    const dateReservations = getDateReservations(date);
+
+    if (facilityFilter === "all") {
+      return dateReservations;
+    }
+
+    return dateReservations.filter((res) => res.facility === facilityFilter);
+  };
+
+  // Get color based on facility for visual differentiation
+  const getFacilityColor = (facility) => {
     const colors = {
-      'Activity Center 1': '#1a73e8',
-      'Activity Center 2': '#137333',
-      'Conference Room 1': '#9334e6',
-      'Conference Room 2': '#ea8600',
-      'Conference Room 3': '#d93025',
-      'Conference Room 4': '#0d9488',
-      'Conference Room 5': '#c2185b',
-      'Conference Room 6': '#5f6368'
+      "Activity Center A": "#4285F4", // Google blue
+      "Activity Center B": "#EA4335", // Google red
+      "Conference Room 1": "#FBBC05", // Google yellow
+      "Conference Room 2": "#34A853", // Google green
+      "Conference Room 3": "#8E24AA", // Purple
+      "Conference Room 4": "#FB8C00", // Orange
+      "Conference Room 5": "#0097A7", // Cyan
+      "Conference Room 6": "#607D8B", // Blue grey
     };
-    return colors[location] || '#5f6368';
+
+    return colors[facility] || "#9E9E9E"; // Default gray
   };
 
-  const days = getDaysInMonth(currentDate);
+  // Render a single calendar day
+  const renderDay = (day) => {
+    const isToday = formatDate(new Date()) === formatDate(day.date);
+    const isSelected =
+      selectedDate && formatDate(selectedDate) === formatDate(day.date);
+    const dayReservations = getFilteredReservations(day.date);
 
-  return (
-     <div style={{ 
-      height: '100vh', // Changed from minHeight to height
-      width: '100vw', // Ensure full viewport width
-      backgroundColor: '#ffffff', 
-      fontFamily: 'Google Sans, Arial, sans-serif',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden' // Prevent double scrollbars
-    }}>
-      {/* Header */}
-      <header style={{ 
-        borderBottom: '1px solid #dadce0', 
-        padding: '8px 24px', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        backgroundColor: '#ffffff',
-        minHeight: '64px',
-        flexShrink: 0, 
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={goToToday}
-              style={{ 
-                padding: '10px 24px', 
-                border: '1px solid #dadce0', 
-                borderRadius: '4px', 
-                backgroundColor: '#ffffff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#3c4043',
-                transition: 'box-shadow 0.2s, background-color 0.2s'
+    return (
+      <div
+        key={day.date.toString()}
+        className="calendar-day"
+        style={{
+          ...styles.calendarDay,
+          opacity: day.currentMonth ? 1 : 0.3,
+          background: isToday ? "#f5f5f5" : isSelected ? "#e3f2fd" : "white",
+          cursor: day.date < new Date() && !isToday ? "not-allowed" : "pointer",
+        }}
+        onClick={() => handleDayClick(day)}
+      >
+        <div style={styles.dayHeader}>
+          <span style={isToday ? styles.todayCircle : null}>
+            {day.date.getDate()}
+          </span>
+        </div>
+        <div style={styles.dayContent}>
+          {dayReservations.map((reservation) => (
+            <div
+              key={reservation.id}
+              style={{
+                ...styles.reservation,
+                backgroundColor: getFacilityColor(reservation.facility),
               }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#f8f9fa';
-                e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = '#ffffff';
-                e.target.style.boxShadow = 'none';
+              onClick={(e) => {
+                e.stopPropagation();
+                handleReservationClick(reservation);
               }}
             >
-              Today
+              <div style={styles.reservationTime}>
+                {reservation.timeStart} - {reservation.timeEnd}
+              </div>
+              <div style={styles.reservationTitle}>{reservation.facility}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Render the calendar header with weekday names
+  const renderCalendarHeader = () => {
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    return (
+      <div style={styles.calendarHeader}>
+        {weekdays.map((day) => (
+          <div key={day} style={styles.weekdayHeader}>
+            {day}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Render the reservation form modal
+  const renderModal = () => {
+    if (!showModal) return null;
+
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>
+              {modalMode === "create"
+                ? "Create Reservation"
+                : "Edit Reservation"}
+            </h2>
+            <button
+              style={styles.closeButton}
+              onClick={() => {
+                setShowModal(false);
+                resetForm();
+              }}
+            >
+              ×
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={previousMonth}
-                style={{ 
-                  padding: '8px', 
-                  border: 'none',
-                  borderRadius: '50%',
-                  backgroundColor: 'transparent',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f3f4'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-              >
-                <ChevronLeft size={18} color="#5f6368" />
-              </button>
-              <button
-                onClick={nextMonth}
-                style={{ 
-                  padding: '8px', 
-                  border: 'none',
-                  borderRadius: '50%',
-                  backgroundColor: 'transparent',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f3f4'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-              >
-                <ChevronRight size={18} color="#5f6368" />
-              </button>
-            </div>
-            <h1 style={{ 
-              fontSize: '22px', 
-              fontWeight: '400', 
-              color: '#3c4043', 
-              margin: 0,
-              lineHeight: '28px'
-            }}>
-              {months[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h1>
           </div>
-        </div>
-        <button
-          onClick={() => openModal()}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: '#1a73e8',
-            color: '#ffffff',
-            padding: '10px 24px',
-            borderRadius: '24px',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            transition: 'background-color 0.2s, box-shadow 0.2s'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.backgroundColor = '#1557b0';
-            e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.backgroundColor = '#1a73e8';
-            e.target.style.boxShadow = 'none';
-          }}
-        >
-          <Plus size={16} />
-          <span>Create</span>
-        </button>
-      </header>
 
-      <div style={{ 
-        display: 'flex', 
-        flex: 1, 
-        overflow: 'hidden',
-        width: '100%' 
-      }}>
-        {/* Sidebar */}
-         <div style={{ 
-          width: '280px', 
-          minWidth: '280px', // Prevent sidebar from shrinking
-          borderRight: '1px solid #dadce0', 
-          padding: '20px 16px',
-          backgroundColor: '#ffffff',
-          overflowY: 'auto',
-          height: '100%' // Take full available height
-        }}>
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#3c4043', 
-              marginBottom: '16px',
-              margin: '0 0 16px 0'
-            }}>
-              {months[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h3>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(7, 1fr)', 
-              gap: '2px', 
-              fontSize: '12px',
-              marginBottom: '8px'
-            }}>
-              {weekdaysShort.map(day => (
-                <div key={day} style={{ 
-                  padding: '8px 0', 
-                  textAlign: 'center',
-                  color: '#5f6368',
-                  fontWeight: '500'
-                }}>
-                  {day.charAt(0)}
-                </div>
-              ))}
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.formGroup}>
+              <label htmlFor="date" style={styles.label}>
+                Date
+              </label>
+              <input
+                type="date"
+                id="date"
+                name="date"
+                value={formData.date}
+                onChange={handleInputChange}
+                style={styles.input}
+                required
+                disabled={modalMode === "edit"} // Can't change date when editing
+              />
             </div>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(7, 1fr)', 
-              gap: '2px'
-            }}>
-              {days.map((day, index) => {
-                const isToday = day && day.toDateString() === new Date().toDateString();
-                const isSelected = day && day.toDateString() === selectedDate.toDateString();
-                
-                return (
-                  <button
-                    key={index}
-                    onClick={() => day && setSelectedDate(day)}
-                    style={{
-                      padding: '8px 0',
-                      fontSize: '13px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      border: 'none',
-                      cursor: day ? 'pointer' : 'default',
-                      backgroundColor: isSelected && !isToday
-                        ? '#1a73e8'
-                        : isToday
-                        ? '#1a73e8'
-                        : 'transparent',
-                      color: isSelected || isToday
-                        ? '#ffffff'
-                        : day 
-                        ? '#3c4043' 
-                        : '#dadce0',
-                      transition: 'background-color 0.2s',
-                      fontWeight: isToday ? '500' : '400',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (day && !isSelected && !isToday) {
-                        e.target.style.backgroundColor = '#f1f3f4';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (day && !isSelected && !isToday) {
-                        e.target.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    {day ? day.getDate() : ''}
-                  </button>
-                );
+
+            <div style={styles.formRow}>
+              <div style={styles.formGroup}>
+                <label htmlFor="timeStart" style={styles.label}>
+                  Start Time
+                </label>
+                <input
+                  type="time"
+                  id="timeStart"
+                  name="timeStart"
+                  value={formData.timeStart}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label htmlFor="timeEnd" style={styles.label}>
+                  End Time
+                </label>
+                <input
+                  type="time"
+                  id="timeEnd"
+                  name="timeEnd"
+                  value={formData.timeEnd}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="facility" style={styles.label}>
+                Facility
+              </label>
+              <select
+                id="facility"
+                name="facility"
+                value={formData.facility}
+                onChange={handleInputChange}
+                style={styles.select}
+                required
+              >
+                {facilities.map((facility) => (
+                  <option key={facility} value={facility}>
+                    {facility}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={styles.formRow}>
+              <div style={styles.formGroup}>
+                <label htmlFor="attendees" style={styles.label}>
+                  Number of Attendees
+                </label>
+                <input
+                  type="number"
+                  id="attendees"
+                  name="attendees"
+                  value={formData.attendees}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label htmlFor="organizer" style={styles.label}>
+                  Organizer Name
+                </label>
+                <input
+                  type="text"
+                  id="organizer"
+                  name="organizer"
+                  value={formData.organizer}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={styles.formActions}>
+              {modalMode === "edit" && (
+                <button
+                  type="button"
+                  style={styles.deleteButton}
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              )}
+              <button type="submit" style={styles.submitButton}>
+                {modalMode === "create" ? "Create" : "Update"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={styles.app}>
+      <div style={styles.sidebar}>
+        <div style={styles.logo}>
+          <h1 style={styles.title}>Reservation System</h1>
+        </div>
+
+        <div style={styles.navigation}>
+          <button style={styles.todayButton} onClick={goToToday}>
+            Today
+          </button>
+          <div style={styles.monthNavigation}>
+            <button style={styles.navButton} onClick={prevMonth}>
+              &lt;
+            </button>
+            <h2 style={styles.currentMonth}>
+              {currentDate.toLocaleDateString("en-US", {
+                month: "long",
+                year: "numeric",
               })}
-            </div>
-          </div>
-
-          <div>
-            <h3 style={{ 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#3c4043', 
-              marginBottom: '16px',
-              margin: '0 0 16px 0'
-            }}>
-              My calendars
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {locations.map(location => (
-                <div key={location} style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px', 
-                  fontSize: '14px',
-                  padding: '4px 0'
-                }}>
-                  <div style={{ 
-                    width: '10px', 
-                    height: '10px', 
-                    borderRadius: '50%', 
-                    backgroundColor: getLocationColor(location),
-                    flexShrink: 0
-                  }}></div>
-                  <span style={{ 
-                    color: '#3c4043',
-                    fontSize: '14px',
-                    lineHeight: '20px'
-                  }}>
-                    {location}
-                  </span>
-                </div>
-              ))}
-            </div>
+            </h2>
+            <button style={styles.navButton} onClick={nextMonth}>
+              &gt;
+            </button>
           </div>
         </div>
 
-        {/* Main Calendar */}
-        <div style={{ 
-          flex: 1, 
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundColor: '#ffffff',
-          overflow: 'auto', // Allow scrolling only for calendar
-          minWidth: 0 // Fix flexbox overflow issue
-        }}>
-          {/* Calendar Header */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(7, 1fr)',
-            borderBottom: '1px solid #dadce0',
-            backgroundColor: '#ffffff',
-            position: 'sticky',
-            top: 0,
-            zIndex: 1,
-            flexShrink: 0
-          }}>
-            {weekdays.map(day => (
-              <div key={day} style={{
-                padding: '12px 8px',
-                textAlign: 'center',
-                fontSize: '11px',
-                fontWeight: '500',
-                color: '#70757a',
-                textTransform: 'uppercase',
-                letterSpacing: '0.8px',
-                borderRight: day !== 'Saturday' ? '1px solid #dadce0' : 'none'
-              }}>
-                {day.substring(0, 3)}
+        <div style={styles.filterSection}>
+          <h3 style={styles.filterTitle}>Filter by Facility</h3>
+          <select
+            value={facilityFilter}
+            onChange={(e) => setFacilityFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="all">All Facilities</option>
+            {facilities.map((facility) => (
+              <option key={facility} value={facility}>
+                {facility}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={styles.legendSection}>
+          <h3 style={styles.legendTitle}>Facilities</h3>
+          <div style={styles.legend}>
+            {facilities.map((facility) => (
+              <div key={facility} style={styles.legendItem}>
+                <div
+                  style={{
+                    ...styles.legendColor,
+                    backgroundColor: getFacilityColor(facility),
+                  }}
+                ></div>
+                <span style={styles.legendText}>{facility}</span>
               </div>
             ))}
-          </div>
-          
-          {/* Calendar Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', // Equal width columns
-            gridAutoRows: '1fr', // Equal height rows
-            flex: 1,
-            backgroundColor: '#ffffff',
-            minHeight: '600px' // Ensure minimum height
-          }}>
-            {days.map((day, index) => {
-              const dayEvents = getEventsForDate(day);
-              const isToday = day && day.toDateString() === new Date().toDateString();
-              const isSelected = day && day.toDateString() === selectedDate.toDateString();
-              const isWeekend = day && (day.getDay() === 0 || day.getDay() === 6);
-              
-              return (
-                <div
-                  key={index}
-                  onClick={() => handleDateClick(day)}
-                  style={{
-                    minHeight: '120px',
-                    padding: '8px',
-                    cursor: day ? 'pointer' : 'default',
-                    border: '1px solid #dadce0',
-                    borderTop: 'none',
-                    borderLeft: index % 7 === 0 ? '1px solid #dadce0' : 'none',
-                    backgroundColor: '#ffffff',
-                    transition: 'background-color 0.2s',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    position: 'relative' // For absolute positioning of content
-                  }}
-                  onMouseEnter={(e) => {
-                    if (day) e.target.style.backgroundColor = '#f8f9fa';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (day) e.target.style.backgroundColor = '#ffffff';
-                  }}
-                >
-                  {day && (
-                    <>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'flex-start',
-                        alignItems: 'center',
-                        marginBottom: '4px'
-                      }}>
-                        <span style={{
-                          fontSize: '26px',
-                          color: isToday ? '#1a73e8' : '#3c4043',
-                          fontWeight: isToday ? '500' : '400',
-                          lineHeight: '32px'
-                        }}>
-                          {day.getDate()}
-                        </span>
-                      </div>
-                      <div style={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        gap: '2px',
-                        flex: 1
-                      }}>
-                        {dayEvents.slice(0, 3).map(event => (
-                          <div
-                            key={event.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openModal(event);
-                            }}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                              cursor: 'pointer',
-                              backgroundColor: getLocationColor(event.location),
-                              color: '#ffffff',
-                              transition: 'opacity 0.2s',
-                              border: `1px solid ${getLocationColor(event.location)}`,
-                              marginBottom: '1px'
-                            }}
-                            onMouseEnter={(e) => e.target.style.opacity = '0.9'}
-                            onMouseLeave={(e) => e.target.style.opacity = '1'}
-                          >
-                            <div style={{ 
-                              whiteSpace: 'nowrap', 
-                              overflow: 'hidden', 
-                              textOverflow: 'ellipsis',
-                              fontWeight: '500'
-                            }}>
-                              {formatTime(event.startTime)} {event.title}
-                            </div>
-                          </div>
-                        ))}
-                        {dayEvents.length > 3 && (
-                          <div style={{ 
-                            fontSize: '12px', 
-                            color: '#5f6368',
-                            padding: '2px 8px',
-                            cursor: 'pointer'
-                          }}>
-                            +{dayEvents.length - 3} more
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
           </div>
         </div>
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            boxShadow: '0 8px 10px 1px rgba(0,0,0,.14), 0 3px 14px 2px rgba(0,0,0,.12), 0 5px 5px -3px rgba(0,0,0,.2)',
-            width: '540px',
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            overflow: 'auto'
-          }}>
-            <div style={{ padding: '24px' }}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between', 
-                marginBottom: '24px' 
-              }}>
-                <h2 style={{ 
-                  fontSize: '22px', 
-                  fontWeight: '400', 
-                  color: '#3c4043', 
-                  margin: 0 
-                }}>
-                  {editingEvent ? 'Edit Event' : 'New Event'}
-                </h2>
-                {editingEvent && (
-                  <button
-                    onClick={() => {
-                      deleteEvent(editingEvent.id);
-                      closeModal();
-                    }}
-                    style={{
-                      padding: '8px',
-                      color: '#ea4335',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      borderRadius: '50%',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#fce8e6'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: '#3c4043', 
-                    marginBottom: '8px' 
-                  }}>
-                    Add title
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid #dadce0',
-                      borderRadius: '4px',
-                      fontSize: '16px',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                      boxSizing: 'border-box',
-                      fontFamily: 'inherit'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                    placeholder="Add title"
-                  />
-                </div>
-
-                <div>
-                  <label style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: '#3c4043', 
-                    marginBottom: '8px',
-                    gap: '8px'
-                  }}>
-                    <MapPin size={16} />
-                    Location
-                  </label>
-                  <select
-                    value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid #dadce0',
-                      borderRadius: '4px',
-                      fontSize: '16px',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                      boxSizing: 'border-box',
-                      backgroundColor: '#ffffff',
-                      fontFamily: 'inherit'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                  >
-                    {locations.map(location => (
-                      <option key={location} value={location}>{location}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      fontSize: '14px', 
-                      fontWeight: '500', 
-                      color: '#3c4043', 
-                      marginBottom: '8px',
-                      gap: '8px'
-                    }}>
-                      <Clock size={16} />
-                      Start time
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.startTime}
-                      onChange={(e) => setFormData({...formData, startTime: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #dadce0',
-                        borderRadius: '4px',
-                        fontSize: '16px',
-                        outline: 'none',
-                        transition: 'border-color 0.2s',
-                        boxSizing: 'border-box',
-                        fontFamily: 'inherit'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                      onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ 
-                      display: 'block', 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
-                      color: '#3c4043', 
-                      marginBottom: '8px' 
-                    }}>
-                      End time
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.endTime}
-                      onChange={(e) => setFormData({...formData, endTime: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: '1px solid #dadce0',
-                        borderRadius: '4px',
-                        fontSize: '16px',
-                        outline: 'none',
-                        transition: 'border-color 0.2s',
-                        boxSizing: 'border-box',
-                        fontFamily: 'inherit'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                      onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: '#3c4043', 
-                    marginBottom: '8px',
-                    gap: '8px'
-                  }}>
-                    <Users size={16} />
-                    Number of attendees
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.attendees}
-                    onChange={(e) => setFormData({...formData, attendees: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid #dadce0',
-                      borderRadius: '4px',
-                      fontSize: '16px',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                      boxSizing: 'border-box',
-                      fontFamily: 'inherit'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: '#3c4043', 
-                    marginBottom: '8px' 
-                  }}>
-                    Organizer name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.organizer}
-                    onChange={(e) => setFormData({...formData, organizer: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid #dadce0',
-                      borderRadius: '4px',
-                      fontSize: '16px',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                      boxSizing: 'border-box',
-                      fontFamily: 'inherit'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#1a73e8'}
-                    onBlur={(e) => e.target.style.borderColor = '#dadce0'}
-                    placeholder="Your name"
-                  />
-                </div>
-
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px', 
-                  paddingTop: '16px',
-                  justifyContent: 'flex-end'
-                }}>
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    style={{
-                      padding: '10px 24px',
-                      border: '1px solid #dadce0',
-                      color: '#1a73e8',
-                      backgroundColor: '#ffffff',
-                      borderRadius: '4px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      transition: 'background-color 0.2s, box-shadow 0.2s',
-                      fontFamily: 'inherit'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = '#f8f9fa';
-                      e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = '#ffffff';
-                      e.target.style.boxShadow = 'none';
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    style={{
-                      backgroundColor: '#1a73e8',
-                      color: '#ffffff',
-                      padding: '10px 24px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      transition: 'background-color 0.2s, box-shadow 0.2s',
-                      fontFamily: 'inherit'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = '#1557b0';
-                      e.target.style.boxShadow = '0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = '#1a73e8';
-                      e.target.style.boxShadow = 'none';
-                    }}
-                  >
-                    {editingEvent ? 'Save' : 'Save'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div style={styles.calendarContainer}>
+        {renderCalendarHeader()}
+        <div style={styles.calendarGrid}>
+          {calendarDays.map((day) => renderDay(day))}
         </div>
-      )}
+      </div>
+
+      {renderModal()}
     </div>
   );
+}
+
+// Styles using React inline styling (CSS-in-JS)
+const styles = {
+  app: {
+    display: "flex",
+    height: "100vh",
+    fontFamily: "Roboto, Arial, sans-serif",
+    color: "#333",
+  },
+  sidebar: {
+    width: "280px",
+    borderRight: "1px solid #e0e0e0",
+    padding: "16px",
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "#ffffff",
+  },
+  logo: {
+    marginBottom: "24px",
+  },
+  title: {
+    fontSize: "24px",
+    fontWeight: "500",
+    color: "#5f6368",
+    margin: "0",
+  },
+  navigation: {
+    marginBottom: "24px",
+  },
+  todayButton: {
+    backgroundColor: "#1a73e8",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    padding: "8px 16px",
+    fontSize: "14px",
+    fontWeight: "500",
+    cursor: "pointer",
+    marginBottom: "16px",
+    width: "100%",
+  },
+  monthNavigation: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  navButton: {
+    background: "none",
+    border: "none",
+    fontSize: "20px",
+    cursor: "pointer",
+    color: "#5f6368",
+    padding: "8px",
+    borderRadius: "50%",
+  },
+  currentMonth: {
+    margin: "0",
+    fontSize: "18px",
+    fontWeight: "500",
+    color: "#3c4043",
+  },
+  filterSection: {
+    marginBottom: "24px",
+  },
+  filterTitle: {
+    fontSize: "16px",
+    fontWeight: "500",
+    color: "#3c4043",
+    marginBottom: "8px",
+  },
+  filterSelect: {
+    width: "100%",
+    padding: "8px",
+    borderRadius: "4px",
+    border: "1px solid #dadce0",
+    fontSize: "14px",
+  },
+  legendSection: {
+    marginTop: "auto",
+  },
+  legendTitle: {
+    fontSize: "16px",
+    fontWeight: "500",
+    color: "#3c4043",
+    marginBottom: "8px",
+  },
+  legend: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  legendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  legendColor: {
+    width: "12px",
+    height: "12px",
+    borderRadius: "2px",
+  },
+  legendText: {
+    fontSize: "14px",
+    color: "#5f6368",
+  },
+  calendarContainer: {
+    flex: "1",
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "#ffffff",
+    overflow: "auto",
+  },
+  calendarHeader: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7, 1fr)",
+    borderBottom: "1px solid #e0e0e0",
+  },
+  weekdayHeader: {
+    padding: "12px 0",
+    textAlign: "center",
+    fontSize: "12px",
+    fontWeight: "500",
+    color: "#70757a",
+  },
+  calendarGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7, 1fr)",
+    gridAutoRows: "minmax(120px, 1fr)",
+    flex: "1",
+  },
+  calendarDay: {
+    border: "1px solid #e0e0e0",
+    padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
+  dayHeader: {
+    display: "flex",
+    justifyContent: "flex-end",
+    marginBottom: "4px",
+    fontSize: "14px",
+    color: "#70757a",
+  },
+  todayCircle: {
+    backgroundColor: "#1a73e8",
+    color: "white",
+    borderRadius: "50%",
+    width: "24px",
+    height: "24px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "500",
+  },
+  dayContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    overflow: "auto",
+    flex: "1",
+  },
+  reservation: {
+    borderRadius: "4px",
+    padding: "4px 6px",
+    fontSize: "12px",
+    color: "white",
+    cursor: "pointer",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+  },
+  reservationTime: {
+    fontWeight: "500",
+    marginBottom: "2px",
+  },
+  reservationTitle: {
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: "1000",
+  },
+  modal: {
+    backgroundColor: "white",
+    borderRadius: "8px",
+    width: "500px",
+    maxWidth: "90%",
+    maxHeight: "90vh",
+    overflow: "auto",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+  },
+  modalHeader: {
+    padding: "16px 24px",
+    borderBottom: "1px solid #e0e0e0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  closeButton: {
+    background: "none",
+    border: "none",
+    fontSize: "24px",
+    cursor: "pointer",
+    color: "#5f6368",
+  },
+  form: {
+    padding: "24px",
+  },
+  formGroup: {
+    marginBottom: "16px",
+    width: "100%",
+  },
+  formRow: {
+    display: "flex",
+    gap: "16px",
+    marginBottom: "16px",
+  },
+  label: {
+    display: "block",
+    marginBottom: "8px",
+    fontSize: "14px",
+    fontWeight: "500",
+    color: "#3c4043",
+  },
+  input: {
+    width: "100%",
+    padding: "10px",
+    borderRadius: "4px",
+    border: "1px solid #dadce0",
+    fontSize: "14px",
+  },
+  select: {
+    width: "100%",
+    padding: "10px",
+    borderRadius: "4px",
+    border: "1px solid #dadce0",
+    fontSize: "14px",
+  },
+  formActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "12px",
+    marginTop: "24px",
+  },
+  submitButton: {
+    backgroundColor: "#1a73e8",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    padding: "10px 24px",
+    fontSize: "14px",
+    fontWeight: "500",
+    cursor: "pointer",
+  },
+  deleteButton: {
+    backgroundColor: "#ea4335",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    padding: "10px 24px",
+    fontSize: "14px",
+    fontWeight: "500",
+    cursor: "pointer",
+  },
 };
 
 export default App;
