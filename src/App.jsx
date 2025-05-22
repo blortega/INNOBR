@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   collection,
   addDoc,
+  getDoc,
   getDocs,
   doc,
   updateDoc,
@@ -24,6 +25,14 @@ function App() {
   const [modalMode, setModalMode] = useState("create");
   const [selectedReservation, setSelectedReservation] = useState(null);
 
+  // states for facilities
+  const [locations, setLocations] = useState([]);
+
+  // states for upcoming booking
+  const [upcomingBookingsOpen, setUpcomingBookingsOpen] = useState(false);
+  const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+
   // Form states
   const [formData, setFormData] = useState({
     date: "",
@@ -39,16 +48,31 @@ function App() {
   const [facilityFilter, setFacilityFilter] = useState("all");
 
   // List of available facilities
-  const facilities = [
-    "Activity Center A",
-    "Activity Center B",
-    "Conference Room 1",
-    "Conference Room 2",
-    "Conference Room 3",
-    "Conference Room 4",
-    "Conference Room 5",
-    "Conference Room 6",
-  ];
+ useEffect(() => {
+  const fetchFacilities = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "facilities"));
+      
+      // Extract the "facility" field from each document
+      const facilities = querySnapshot.docs.map(doc => ({
+        id: doc.id, // Auto-generated Firestore ID (e.g., "AG6RTIzurUP7CoZzg7XA")
+        name: doc.data().facility // "Conference Room 4" etc.
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+      
+      setLocations(facilities);
+    } catch (error) {
+      console.error("Error fetching facilities:", error);
+    }
+  };
+  
+  fetchFacilities();
+}, []);
+
+const facilityColorMap = locations.reduce((map, facility) => {
+  map[facility.id] = getFacilityColorByName(facility.name);
+  return map;
+}, {});
 
   // Initialize and fetch data
   useEffect(() => {
@@ -383,7 +407,8 @@ function App() {
   };
 
   // Get color based on facility for visual differentiation
-  const getFacilityColor = (facility) => {
+    const getFacilityColor = (facilityId) => facilityColorMap[facilityId] || "#9E9E9E";
+    function getFacilityColorByName(name) {
     const colors = {
       "Activity Center A": "#4285F4", // Google blue
       "Activity Center B": "#EA4335", // Google red
@@ -395,7 +420,7 @@ function App() {
       "Conference Room 6": "#607D8B", // Blue grey
     };
 
-    return colors[facility] || "#9E9E9E"; // Default gray
+    return colors[name] || "#9E9E9E"; // Default gray
   };
 
   // Render a single calendar day
@@ -539,16 +564,17 @@ function App() {
                 Facility
               </label>
               <select
-                id="facility"
-                name="facility"
-                value={formData.facility}
+                id="location"
+                name="location"
+                value={formData.location}
                 onChange={handleInputChange}
                 style={styles.select}
                 required
               >
-                {facilities.map((facility) => (
-                  <option key={facility} value={facility}>
-                    {facility}
+              <option value="">Select a facility</option>
+                {locations.map((facility) => (
+                  <option key={facility.id} value={facility.name}>
+                    {facility.name}
                   </option>
                 ))}
               </select>
@@ -665,26 +691,33 @@ function App() {
             style={styles.filterSelect}
           >
             <option value="all">All Facilities</option>
-            {facilities.map((facility) => (
-              <option key={facility} value={facility}>
-                {facility}
+            {locations.map((facility) => (
+              <option key={facility.id}value={facility.name}>
+                {facility.name}
               </option>
             ))}
           </select>
         </div>
 
+        <button 
+          onClick={() => setUpcomingBookingsOpen(!upcomingBookingsOpen)}
+          style={styles.upcomingButton}
+        >
+        {upcomingBookingsOpen ? 'Hide Bookings' : 'Upcoming Bookings'}
+        </button>
+
         <div style={styles.legendSection}>
           <h3 style={styles.legendTitle}>Facilities</h3>
           <div style={styles.legend}>
-            {facilities.map((facility) => (
-              <div key={facility} style={styles.legendItem}>
+            {locations.map((facility) => (
+              <div key={facility.id} style={styles.legendItem}>
                 <div
                   style={{
                     ...styles.legendColor,
-                    backgroundColor: getFacilityColor(facility),
+                    backgroundColor: getFacilityColor(facility.id),
                   }}
                 ></div>
-                <span style={styles.legendText}>{facility}</span>
+                <span style={styles.legendText}>{facility.name}</span>
               </div>
             ))}
           </div>
