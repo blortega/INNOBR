@@ -321,7 +321,12 @@ function App() {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: name === "attendees" ? parseInt(value, 10) || 0 : value,
+      [name]:
+        name === "employeeID"
+          ? value.toUpperCase()
+          : name === "attendees"
+          ? parseInt(value, 10) || 0
+          : value,
     });
   };
 
@@ -484,6 +489,7 @@ function App() {
       attendees: 1,
       organizer: "",
       facility: "Activity Center A",
+      employeeID: "",
     });
     setSelectedReservation(null);
   };
@@ -614,7 +620,7 @@ function App() {
       const { name, value } = e.target;
       setNewFacility({
         ...newFacility,
-        [name]: value,
+        [name]: name === "employeeID" ? value.toUpperCase() : value,
       });
     };
 
@@ -728,8 +734,7 @@ function App() {
                 name="employeeID"
                 value={newFacility.employeeID}
                 onChange={handleFacilityInputChange}
-                style={{ ...styles.input, textTransform: "uppercase" }}
-                className="uppercase"
+                style={styles.input}
                 required
                 placeholder="Must match admin collection"
               />
@@ -766,6 +771,14 @@ function App() {
   // Render edit facility modal
   const renderEditFacilityModal = () => {
     if (!showEditFacilityModal || !currentFacility) return null;
+
+    const handleAuthEmployeeIDChange = (e) => {
+      setFacilityAuth({
+        ...facilityAuth,
+        employeeID: e.target.value.toUpperCase(),
+        error: "",
+      });
+    };
 
     return (
       <div style={styles.modalOverlay}>
@@ -817,15 +830,8 @@ function App() {
                 id="employeeID"
                 name="employeeID"
                 value={facilityAuth.employeeID}
-                onChange={(e) =>
-                  setFacilityAuth({
-                    ...facilityAuth,
-                    employeeID: e.target.value,
-                    error: "",
-                  })
-                }
-                style={{ ...styles.input, textTransform: "uppercase" }}
-                className="uppercase"
+                onChange={handleAuthEmployeeIDChange}
+                style={styles.input}
                 required
                 placeholder="Must match admin collection"
               />
@@ -863,6 +869,14 @@ function App() {
   const renderDeleteFacilityModal = () => {
     if (!showDeleteFacilityModal || !currentFacility) return null;
 
+    const handleAuthEmployeeIDChange = (e) => {
+      setFacilityAuth({
+        ...facilityAuth,
+        employeeID: e.target.value.toUpperCase(),
+        error: "",
+      });
+    };
+
     return (
       <div style={styles.modalOverlay}>
         <div style={styles.modal}>
@@ -898,15 +912,8 @@ function App() {
                 id="employeeID"
                 name="employeeID"
                 value={facilityAuth.employeeID}
-                onChange={(e) =>
-                  setFacilityAuth({
-                    ...facilityAuth,
-                    employeeID: e.target.value,
-                    error: "",
-                  })
-                }
-                style={{ ...styles.input, textTransform: "uppercase" }}
-                className="uppercase"
+                onChange={handleAuthEmployeeIDChange}
+                style={styles.input}
                 required
                 placeholder="Must match admin collection"
               />
@@ -1084,11 +1091,12 @@ function App() {
                 name="employeeID"
                 value={formData.employeeID}
                 onChange={handleInputChange}
-                style={{ ...styles.input, textTransform: "uppercase" }}
-                className="uppercase"
+                style={styles.input}
                 required={modalMode === "create"}
                 placeholder={
-                  modalMode === "edit" ? "Enter original Employee ID" : ""
+                  modalMode === "edit"
+                    ? "Enter original employee ID"
+                    : "Enter your employee ID"
                 }
               />
             </div>
