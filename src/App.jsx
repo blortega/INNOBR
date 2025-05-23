@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import {
   collection,
-  addDoc,
-  getDocs,
   doc,
+  addDoc,
+  setDoc,
+  getDoc,
+  getDocs,
   updateDoc,
   deleteDoc,
   query,
@@ -24,6 +26,29 @@ function App() {
   const [modalMode, setModalMode] = useState("create");
   const [selectedReservation, setSelectedReservation] = useState(null);
 
+  // States for facilities
+  const [locations, setLocations] = useState([]);
+  const [showAddFacilityModal, setShowAddFacilityModal] = useState(false);
+  const [newFacility, setNewFacility] = useState({
+    facility: "",
+    employeeID: "",
+  });
+  const [facilityError, setFacilityError] = useState("");
+
+  // States for edit/delete facility
+  const [showEditFacilityModal, setShowEditFacilityModal] = useState(false);
+  const [showDeleteFacilityModal, setShowDeleteFacilityModal] = useState(false);
+  const [currentFacility, setCurrentFacility] = useState(null);
+  const [facilityAuth, setFacilityAuth] = useState({
+    employeeID: "",
+    error: "",
+  });
+
+  // States for upcoming booking
+  const [upcomingBookingsOpen, setUpcomingBookingsOpen] = useState(false);
+  const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+
   // Form states
   const [formData, setFormData] = useState({
     date: "",
@@ -39,16 +64,133 @@ function App() {
   const [facilityFilter, setFacilityFilter] = useState("all");
 
   // List of available facilities
-  const facilities = [
-    "Activity Center A",
-    "Activity Center B",
-    "Conference Room 1",
-    "Conference Room 2",
-    "Conference Room 3",
-    "Conference Room 4",
-    "Conference Room 5",
-    "Conference Room 6",
-  ];
+  useEffect(() => {
+    const fetchFacilities = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "facilities"));
+        // Extract the "facility" field from each document
+        const facilities = querySnapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            facility: doc.data().facility,
+          }))
+          .sort((a, b) => a.facility.localeCompare(b.facility));
+        setLocations(facilities);
+      } catch (error) {
+        console.error("Error fetching facilities:", error);
+      }
+    };
+    fetchFacilities();
+  }, []);
+
+  const handleEditFacility = (facility) => {
+    setCurrentFacility(facility);
+    setFacilityAuth({ employeeID: "", error: "" });
+    setShowEditFacilityModal(true);
+  };
+
+  const handleEditFacilitySubmit = async (e) => {
+    e.preventDefault();
+
+    if (!facilityAuth.employeeID) {
+      setFacilityAuth({ ...facilityAuth, error: "Employee ID is required" });
+      return;
+    }
+
+    try {
+      // Verify employee ID against admin collection
+      const adminRef = collection(db, "admin");
+      const q = query(
+        adminRef,
+        where("employeeID", "==", facilityAuth.employeeID)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setFacilityAuth({
+          ...facilityAuth,
+          error: "Invalid Employee ID. No matching admin found.",
+        });
+        return;
+      }
+
+      // Update the facility in Firestore
+      await updateDoc(doc(db, "facilities", currentFacility.id), {
+        facility: currentFacility.facility,
+      });
+
+      // Update local state
+      setLocations(
+        locations.map((f) =>
+          f.id === currentFacility.id ? currentFacility : f
+        )
+      );
+
+      // Close modal and reset
+      setShowEditFacilityModal(false);
+      setCurrentFacility(null);
+      setFacilityAuth({ employeeID: "", error: "" });
+    } catch (error) {
+      console.error("Error updating facility:", error);
+      setFacilityAuth({
+        ...facilityAuth,
+        error: "Error updating facility. Please try again.",
+      });
+    }
+  };
+
+  const handleDeleteFacility = (facility) => {
+    setCurrentFacility(facility);
+    setFacilityAuth({ employeeID: "", error: "" });
+    setShowDeleteFacilityModal(true);
+  };
+
+  const handleDeleteFacilityConfirm = async () => {
+    if (!facilityAuth.employeeID) {
+      setFacilityAuth({ ...facilityAuth, error: "Employee ID is required" });
+      return;
+    }
+
+    try {
+      // Verify employee ID against admin collection
+      const adminRef = collection(db, "admin");
+      const q = query(
+        adminRef,
+        where("employeeID", "==", facilityAuth.employeeID)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setFacilityAuth({
+          ...facilityAuth,
+          error: "Invalid Employee ID. No matching admin found.",
+        });
+        return;
+      }
+
+      // Delete the facility from Firestore
+      await deleteDoc(doc(db, "facilities", currentFacility.id));
+
+      // Update local state
+      setLocations(locations.filter((f) => f.id !== currentFacility.id));
+
+      // Close modal and reset
+      setShowDeleteFacilityModal(false);
+      setCurrentFacility(null);
+      setFacilityAuth({ employeeID: "", error: "" });
+    } catch (error) {
+      console.error("Error deleting facility:", error);
+      setFacilityAuth({
+        ...facilityAuth,
+        error: "Error deleting facility. Please try again.",
+      });
+    }
+  };
+
+  const facilityColorMap = locations.reduce((map, facility) => {
+    map[facility.id] = getFacilityColorByName(facility.facility);
+    return map;
+  }, {});
 
   // Initialize and fetch data
   useEffect(() => {
@@ -179,7 +321,12 @@ function App() {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: name === "attendees" ? parseInt(value, 10) || 0 : value,
+      [name]:
+        name === "employeeID"
+          ? value.toUpperCase()
+          : name === "attendees"
+          ? parseInt(value, 10) || 0
+          : value,
     });
   };
 
@@ -259,7 +406,7 @@ function App() {
           ...formData,
           date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
-          employeeID: formData.employeeID, // Include employee ID
+          employeeID: formData.employeeID,
         });
 
         // Update local state
@@ -278,7 +425,7 @@ function App() {
           ...formData,
           date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
-          employeeID: originalemployeeID, // Keep original employee ID
+          employeeID: originalemployeeID,
         });
 
         // Update local state
@@ -290,7 +437,7 @@ function App() {
                   ...formData,
                   date: new Date(formData.date),
                   attendees: parseInt(formData.attendees, 10) || 1,
-                  employeeID: originalemployeeID, // Keep original
+                  employeeID: originalemployeeID,
                 }
               : res
           )
@@ -342,6 +489,7 @@ function App() {
       attendees: 1,
       organizer: "",
       facility: "Activity Center A",
+      employeeID: "",
     });
     setSelectedReservation(null);
   };
@@ -383,20 +531,23 @@ function App() {
   };
 
   // Get color based on facility for visual differentiation
-  const getFacilityColor = (facility) => {
+  const getFacilityColor = (facilityId) =>
+    facilityColorMap[facilityId] || "#9E9E9E";
+  function getFacilityColorByName(facility) {
     const colors = {
-      "Activity Center A": "#4285F4", // Google blue
-      "Activity Center B": "#EA4335", // Google red
-      "Conference Room 1": "#FBBC05", // Google yellow
-      "Conference Room 2": "#34A853", // Google green
-      "Conference Room 3": "#8E24AA", // Purple
-      "Conference Room 4": "#FB8C00", // Orange
-      "Conference Room 5": "#0097A7", // Cyan
-      "Conference Room 6": "#607D8B", // Blue grey
+      "Activity Center A": "#4285F4",
+      "Activity Room B": "#EA4335",
+      "Conference Room 1": "#FBBC05",
+      "Conference Room 2": "#34A853",
+      "Conference Room 3": "#8E24AA",
+      "Conference Room 4": "#FB8C00",
+      "Conference Room 5": "#0097A7",
+      "Conference Room 6": "#607D8B",
+      "Test Facility": "#9E9E9E",
     };
 
-    return colors[facility] || "#9E9E9E"; // Default gray
-  };
+    return colors[facility] || "#9E9E9E";
+  }
 
   // Render a single calendar day
   const renderDay = (day) => {
@@ -428,7 +579,7 @@ function App() {
               key={reservation.id}
               style={{
                 ...styles.reservation,
-                backgroundColor: getFacilityColor(reservation.facility),
+                backgroundColor: getFacilityColorByName(reservation.facility),
               }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -457,6 +608,343 @@ function App() {
             {day}
           </div>
         ))}
+      </div>
+    );
+  };
+
+  // Render facility modal
+  const renderAddFacilityModal = () => {
+    if (!showAddFacilityModal) return null;
+
+    const handleFacilityInputChange = (e) => {
+      const { name, value } = e.target;
+      setNewFacility({
+        ...newFacility,
+        [name]: name === "employeeID" ? value.toUpperCase() : value,
+      });
+    };
+
+    const handleAddFacilitySubmit = async (e) => {
+      e.preventDefault();
+      setFacilityError("");
+
+      // Validate inputs
+      if (!newFacility.facility.trim()) {
+        setFacilityError("Facility name is required");
+        return;
+      }
+
+      if (!newFacility.employeeID.trim()) {
+        setFacilityError("Employee ID is required");
+        return;
+      }
+
+      try {
+        // Check if employee ID exists in admin collection
+        const adminRef = collection(db, "admin");
+        const q = query(
+          adminRef,
+          where("employeeID", "==", newFacility.employeeID)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          setFacilityError("Invalid Employee ID. No matching admin found.");
+          return;
+        }
+
+        // Create facility ID by removing spaces from facility name
+        const facilityId = newFacility.facility.replace(/\s+/g, "");
+
+        // Check if facility already exists
+        const facilityDoc = await getDoc(doc(db, "facilities", facilityId));
+        if (facilityDoc.exists()) {
+          setFacilityError("A facility with this name already exists");
+          return;
+        }
+
+        // Add new facility to Firestore
+        await setDoc(doc(db, "facilities", facilityId), {
+          facility: newFacility.facility,
+        });
+
+        // Refresh facilities list
+        const querySnapshotFacilities = await getDocs(
+          collection(db, "facilities")
+        );
+        const updatedFacilities = querySnapshotFacilities.docs
+          .map((doc) => ({
+            id: doc.id,
+            facility: doc.data().facility,
+          }))
+          .sort((a, b) => a.facility.localeCompare(b.facility));
+
+        setLocations(updatedFacilities);
+        setShowAddFacilityModal(false);
+        setNewFacility({ facility: "", employeeID: "" });
+      } catch (error) {
+        console.error("Error adding facility:", error);
+        setFacilityError("Error adding facility. Please try again.");
+      }
+    };
+
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>Add Facility</h2>
+            <button
+              style={styles.closeButton}
+              onClick={() => {
+                setShowAddFacilityModal(false);
+                setNewFacility({ facility: "", employeeID: "" });
+                setFacilityError("");
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <form onSubmit={handleAddFacilitySubmit} style={styles.form}>
+            <div style={styles.formGroup}>
+              <label htmlFor="facilityName" style={styles.label}>
+                Facility Name
+              </label>
+              <input
+                type="text"
+                id="facilityName"
+                name="facility"
+                value={newFacility.facility}
+                onChange={handleFacilityInputChange}
+                style={styles.input}
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="facilityEmployeeID" style={styles.label}>
+                Your Employee ID
+                <span style={{ color: "red", marginLeft: "5px" }}>
+                  (required for changes)
+                </span>
+              </label>
+              <input
+                type="text"
+                id="facilityEmployeeID"
+                name="employeeID"
+                value={newFacility.employeeID}
+                onChange={handleFacilityInputChange}
+                style={styles.input}
+                required
+                placeholder="Must match admin collection"
+              />
+            </div>
+
+            {facilityError && (
+              <div style={{ color: "red", marginBottom: "15px" }}>
+                {facilityError}
+              </div>
+            )}
+
+            <div style={styles.formActions}>
+              <button
+                type="button"
+                style={styles.cancelButton}
+                onClick={() => {
+                  setShowAddFacilityModal(false);
+                  setNewFacility({ facility: "", employeeID: "" });
+                  setFacilityError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" style={styles.submitButton}>
+                Add Facility
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // Render edit facility modal
+  const renderEditFacilityModal = () => {
+    if (!showEditFacilityModal || !currentFacility) return null;
+
+    const handleAuthEmployeeIDChange = (e) => {
+      setFacilityAuth({
+        ...facilityAuth,
+        employeeID: e.target.value.toUpperCase(),
+        error: "",
+      });
+    };
+
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>Edit Facility</h2>
+            <button
+              style={styles.closeButton}
+              onClick={() => {
+                setShowEditFacilityModal(false);
+                setCurrentFacility(null);
+                setFacilityAuth({ employeeID: "", error: "" });
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <form onSubmit={handleEditFacilitySubmit} style={styles.form}>
+            <div style={styles.formGroup}>
+              <label htmlFor="facilityName" style={styles.label}>
+                Facility Name
+              </label>
+              <input
+                type="text"
+                id="facilityName"
+                name="facility"
+                value={currentFacility.facility}
+                onChange={(e) =>
+                  setCurrentFacility({
+                    ...currentFacility,
+                    facility: e.target.value,
+                  })
+                }
+                style={styles.input}
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="employeeID" style={styles.label}>
+                Your Employee ID
+                <span style={{ color: "red", marginLeft: "5px" }}>
+                  (required for changes)
+                </span>
+              </label>
+              <input
+                type="text"
+                id="employeeID"
+                name="employeeID"
+                value={facilityAuth.employeeID}
+                onChange={handleAuthEmployeeIDChange}
+                style={styles.input}
+                required
+                placeholder="Must match admin collection"
+              />
+            </div>
+
+            {facilityAuth.error && (
+              <div style={{ color: "red", marginBottom: "15px" }}>
+                {facilityAuth.error}
+              </div>
+            )}
+
+            <div style={styles.formActions}>
+              <button
+                type="button"
+                style={styles.cancelButton}
+                onClick={() => {
+                  setShowEditFacilityModal(false);
+                  setCurrentFacility(null);
+                  setFacilityAuth({ employeeID: "", error: "" });
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" style={styles.submitButton}>
+                Update Facility
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // Render delete facility modal
+  const renderDeleteFacilityModal = () => {
+    if (!showDeleteFacilityModal || !currentFacility) return null;
+
+    const handleAuthEmployeeIDChange = (e) => {
+      setFacilityAuth({
+        ...facilityAuth,
+        employeeID: e.target.value.toUpperCase(),
+        error: "",
+      });
+    };
+
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>Delete Facility</h2>
+            <button
+              style={styles.closeButton}
+              onClick={() => {
+                setShowDeleteFacilityModal(false);
+                setCurrentFacility(null);
+                setFacilityAuth({ employeeID: "", error: "" });
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{ padding: "24px" }}>
+            <p>
+              Are you sure you want to delete the facility "
+              {currentFacility.facility}"? This action cannot be undone.
+            </p>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="employeeID" style={styles.label}>
+                Your Employee ID
+                <span style={{ color: "red", marginLeft: "5px" }}>
+                  (required for changes)
+                </span>
+              </label>
+              <input
+                type="text"
+                id="employeeID"
+                name="employeeID"
+                value={facilityAuth.employeeID}
+                onChange={handleAuthEmployeeIDChange}
+                style={styles.input}
+                required
+                placeholder="Must match admin collection"
+              />
+            </div>
+            {facilityAuth.error && (
+              <div style={{ color: "red", marginBottom: "15px" }}>
+                {facilityAuth.error}
+              </div>
+            )}
+            <div style={styles.formActions}>
+              <button
+                type="button"
+                style={styles.cancelButton}
+                onClick={() => {
+                  setShowDeleteFacilityModal(false);
+                  setCurrentFacility(null);
+                  setFacilityAuth({ employeeID: "", error: "" });
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={styles.deleteButton}
+                onClick={handleDeleteFacilityConfirm}
+              >
+                Delete Facility
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -498,7 +986,7 @@ function App() {
                 onChange={handleInputChange}
                 style={styles.input}
                 required
-                disabled={modalMode === "edit"} // Can't change date when editing
+                disabled={modalMode === "edit"}
               />
             </div>
 
@@ -546,9 +1034,10 @@ function App() {
                 style={styles.select}
                 required
               >
-                {facilities.map((facility) => (
-                  <option key={facility} value={facility}>
-                    {facility}
+                <option value="">Select a facility</option>
+                {locations.map((facility) => (
+                  <option key={facility.id} value={facility.facility}>
+                    {facility.facility}
                   </option>
                 ))}
               </select>
@@ -605,7 +1094,9 @@ function App() {
                 style={styles.input}
                 required={modalMode === "create"}
                 placeholder={
-                  modalMode === "edit" ? "Enter original Employee ID" : ""
+                  modalMode === "edit"
+                    ? "Enter original employee ID"
+                    : "Enter your employee ID"
                 }
               />
             </div>
@@ -665,26 +1156,81 @@ function App() {
             style={styles.filterSelect}
           >
             <option value="all">All Facilities</option>
-            {facilities.map((facility) => (
-              <option key={facility} value={facility}>
-                {facility}
+            {locations.map((facility) => (
+              <option key={facility.id} value={facility.facility}>
+                {facility.facility}
               </option>
             ))}
           </select>
         </div>
 
+        <button
+          onClick={() => setUpcomingBookingsOpen(!upcomingBookingsOpen)}
+          style={styles.upcomingButton}
+        >
+          {upcomingBookingsOpen ? "Hide Bookings" : "Upcoming Bookings"}
+        </button>
+
         <div style={styles.legendSection}>
-          <h3 style={styles.legendTitle}>Facilities</h3>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <h3 style={styles.legendTitle}>Facilities</h3>
+            <button
+              onClick={() => setShowAddFacilityModal(true)}
+              style={styles.addButton}
+              title="Add new facility"
+            >
+              <span style={{ fontSize: "18px" }}>+</span>
+            </button>
+          </div>
           <div style={styles.legend}>
-            {facilities.map((facility) => (
-              <div key={facility} style={styles.legendItem}>
-                <div
-                  style={{
-                    ...styles.legendColor,
-                    backgroundColor: getFacilityColor(facility),
-                  }}
-                ></div>
-                <span style={styles.legendText}>{facility}</span>
+            {locations.map((facility) => (
+              <div
+                key={facility.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div style={styles.legendItem}>
+                  <div
+                    style={{
+                      ...styles.legendColor,
+                      backgroundColor: getFacilityColorByName(
+                        facility.facility
+                      ),
+                    }}
+                  ></div>
+                  <span style={styles.legendText}>{facility.facility}</span>
+                </div>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <button
+                    style={{ ...styles.actionButton, fontSize: "14px" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditFacility(facility);
+                    }}
+                    title="Edit facility"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    style={{ ...styles.actionButton, fontSize: "14px" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteFacility(facility);
+                    }}
+                    title="Delete facility"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -699,19 +1245,21 @@ function App() {
       </div>
 
       {renderModal()}
+      {renderAddFacilityModal()}
+      {renderEditFacilityModal()}
+      {renderDeleteFacilityModal()}
     </div>
   );
 }
 
-// Styles using React inline styling (CSS-in-JS)
 const styles = {
   app: {
     display: "flex",
     height: "100vh",
-    width: "100vw", // Add this to ensure full width
+    width: "100vw",
     fontFamily: "Roboto, Arial, sans-serif",
     color: "#333",
-    overflow: "hidden", // Prevent scrolling on the main container
+    overflow: "hidden",
   },
   sidebar: {
     width: "280px",
@@ -815,7 +1363,7 @@ const styles = {
     flexDirection: "column",
     backgroundColor: "#ffffff",
     overflow: "auto",
-    minWidth: 0, // Add this to prevent flex overflow issues
+    minWidth: 0,
   },
   calendarHeader: {
     display: "grid",
@@ -972,6 +1520,28 @@ const styles = {
     fontWeight: "500",
     cursor: "pointer",
   },
+  addButton: {
+    background: "#4285F4",
+    color: "white",
+    border: "none",
+    borderRadius: "50%",
+    width: "28px",
+    height: "28px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "10px",
+  },
+  cancelButton: {
+    padding: "8px 16px",
+    backgroundColor: "#f5f5f5",
+    color: "#333",
+    border: "1px solid #ddd",
+    borderRadius: "4px",
+    cursor: "pointer",
+    marginRight: "10px",
+  },
   deleteButton: {
     backgroundColor: "#ea4335",
     color: "white",
@@ -981,6 +1551,27 @@ const styles = {
     fontSize: "14px",
     fontWeight: "500",
     cursor: "pointer",
+  },
+  facilityItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "4px 0",
+  },
+  facilityActions: {
+    display: "flex",
+    gap: "4px",
+  },
+  actionButton: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px",
+    fontSize: "14px",
+    color: "#5f6368",
+    "&:hover": {
+      color: "#1a73e8",
+    },
   },
 };
 
