@@ -46,8 +46,7 @@ function App() {
 
   // States for upcoming booking
   const [upcomingBookingsOpen, setUpcomingBookingsOpen] = useState(false);
-  const [upcomingBookings, setUpcomingBookings] = useState([]);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [bookings, setBookings] = useState([]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -82,6 +81,20 @@ function App() {
     };
     fetchFacilities();
   }, []);
+
+  const toggleBookings = async () => {
+    const newState = !upcomingBookingsOpen;
+    setUpcomingBookingsOpen(newState);
+
+    if (newState) {
+      const snapshot = await getDocs(collection(db, "reservations"));
+      const fetched = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setBookings(fetched);
+    }
+  };
 
   const handleEditFacility = (facility) => {
     setCurrentFacility(facility);
@@ -1164,12 +1177,39 @@ function App() {
           </select>
         </div>
 
-        <button
-          onClick={() => setUpcomingBookingsOpen(!upcomingBookingsOpen)}
-          style={styles.upcomingButton}
-        >
+        <button onClick={toggleBookings} styles={styles.upcomingBookingsButton}>
           {upcomingBookingsOpen ? "Hide Bookings" : "Upcoming Bookings"}
         </button>
+
+        {upcomingBookingsOpen && (
+          <div className="mt-4 space-y-4">
+            {bookings.length === 0 ? (
+              <div className="text-center text-gray-500">
+                No upcoming bookings found.
+              </div>
+            ) : (
+              bookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="border rounded-lg p-4 shadow-sm bg-white flex flex-col sm:flex-row sm:justify-between sm:items-center"
+                >
+                  <div>
+                    <p className="font-semibold">{booking.organizer}</p>
+                    <p className="text-sm text-gray-600">
+                      {booking.date} — {booking.timeStart} to {booking.timeEnd}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {booking.location} — {booking.facility}
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-800 mt-2 sm:mt-0">
+                    Attendees: {booking.attendees}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         <div style={styles.legendSection}>
           <div
