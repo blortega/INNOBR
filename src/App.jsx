@@ -20,6 +20,7 @@ function App() {
   const [calendarDays, setCalendarDays] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [originalemployeeID, setOriginalemployeeID] = useState("");
+  const [maxBookingsToShow, setMaxBookingsToShow] = useState(5);
 
   // States for reservation modal
   const [showModal, setShowModal] = useState(false);
@@ -46,8 +47,7 @@ function App() {
 
   // States for upcoming booking
   const [upcomingBookingsOpen, setUpcomingBookingsOpen] = useState(false);
-  const [upcomingBookings, setUpcomingBookings] = useState([]);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [bookings, setBookings] = useState([]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -82,6 +82,50 @@ function App() {
     };
     fetchFacilities();
   }, []);
+
+  const toggleBookings = async () => {
+    const newState = !upcomingBookingsOpen;
+    setUpcomingBookingsOpen(newState);
+
+    if (newState) {
+      const snapshot = await getDocs(collection(db, "reservations"));
+      const fetched = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Filter out past reservations
+      const now = new Date();
+      const upcomingReservations = fetched.filter((booking) => {
+        // Parse the date string (format: "2025-05-23")
+        const [year, month, day] = booking.date.split("-").map(Number);
+
+        // Parse the time string (format: "10:00")
+        const [endHour, endMinute] = booking.timeEnd.split(":").map(Number);
+
+        // Create date object for the end time of the reservation
+        const reservationEndTime = new Date(
+          year,
+          month - 1,
+          day,
+          endHour,
+          endMinute
+        );
+
+        // Only include reservations that haven't ended yet
+        return reservationEndTime > now;
+      });
+
+      // Sort upcoming bookings by date and time
+      const sortedBookings = upcomingReservations.sort((a, b) => {
+        const dateA = new Date(`${a.date}T${a.timeStart}:00`);
+        const dateB = new Date(`${b.date}T${b.timeStart}:00`);
+        return dateA - dateB;
+      });
+
+      setBookings(sortedBookings);
+    }
+  };
 
   const handleEditFacility = (facility) => {
     setCurrentFacility(facility);
@@ -1149,27 +1193,71 @@ function App() {
         </div>
 
         <div style={styles.filterSection}>
-          <h3 style={styles.filterTitle}>Filter by Facility</h3>
-          <select
-            value={facilityFilter}
-            onChange={(e) => setFacilityFilter(e.target.value)}
-            style={styles.filterSelect}
-          >
-            <option value="all">All Facilities</option>
-            {locations.map((facility) => (
-              <option key={facility.id} value={facility.facility}>
-                {facility.facility}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div style={styles.bookingsHeader}>
+            <h3 style={styles.filterTitle}>Upcoming Bookings</h3>
+            <div style={styles.bookingsControls}>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={maxBookingsToShow}
+                onChange={(e) =>
+                  setMaxBookingsToShow(parseInt(e.target.value) || 5)
+                }
+                style={styles.limitInput}
+                title="Max bookings to show"
+              />
+              <button
+                onClick={toggleBookings}
+                style={styles.upcomingBookingsButton}
+              >
+                {upcomingBookingsOpen ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
 
-        <button
-          onClick={() => setUpcomingBookingsOpen(!upcomingBookingsOpen)}
-          style={styles.upcomingButton}
-        >
-          {upcomingBookingsOpen ? "Hide Bookings" : "Upcoming Bookings"}
-        </button>
+          {upcomingBookingsOpen && (
+            <div style={styles.bookingsContainer}>
+              {bookings.length === 0 ? (
+                <div style={styles.noBookingsMessage}>
+                  No upcoming bookings found.
+                </div>
+              ) : (
+                bookings
+                  .filter((booking) => {
+                    if (facilityFilter === "all") return true;
+                    return booking.facility === facilityFilter;
+                  })
+                  .slice(0, maxBookingsToShow)
+                  .map((booking) => (
+                    <div
+                      key={booking.id}
+                      style={{
+                        ...styles.bookingItem,
+                        backgroundColor: getFacilityColorByName(
+                          booking.facility
+                        ),
+                      }}
+                    >
+                      <div style={styles.bookingTime}>
+                        {booking.timeStart} - {booking.timeEnd}
+                      </div>
+                      <div style={styles.bookingTitle}>{booking.organizer}</div>
+                      <div style={styles.bookingDetails}>
+                        {booking.facility} • {booking.attendees} people
+                      </div>
+                      <div style={styles.bookingDate}>{booking.date}</div>
+                    </div>
+                  ))
+              )}
+              {bookings.length > maxBookingsToShow && (
+                <div style={styles.moreBookingsIndicator}>
+                  +{bookings.length - maxBookingsToShow} more bookings
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div style={styles.legendSection}>
           <div
@@ -1572,6 +1660,87 @@ const styles = {
     "&:hover": {
       color: "#1a73e8",
     },
+  },
+  bookingsHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "8px",
+  },
+  bookingsControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  limitInput: {
+    width: "50px",
+    padding: "4px 6px",
+    borderRadius: "4px",
+    border: "1px solid #dadce0",
+    fontSize: "12px",
+    textAlign: "center",
+  },
+  upcomingBookingsButton: {
+    backgroundColor: "#1a73e8",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    padding: "6px 12px",
+    fontSize: "12px",
+    fontWeight: "500",
+    cursor: "pointer",
+  },
+  bookingsContainer: {
+    maxHeight: "300px", // Prevents pushing down Facilities section
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    marginBottom: "16px",
+  },
+  bookingItem: {
+    borderRadius: "4px",
+    padding: "8px",
+    color: "white",
+    fontSize: "12px",
+    cursor: "pointer",
+    transition: "opacity 0.2s ease",
+  },
+  bookingTime: {
+    fontWeight: "600",
+    fontSize: "11px",
+    marginBottom: "2px",
+  },
+  bookingTitle: {
+    fontWeight: "500",
+    fontSize: "12px",
+    marginBottom: "2px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  bookingDetails: {
+    fontSize: "10px",
+    opacity: "0.9",
+    marginBottom: "2px",
+  },
+  bookingDate: {
+    fontSize: "10px",
+    opacity: "0.8",
+  },
+  noBookingsMessage: {
+    textAlign: "center",
+    color: "#70757a",
+    fontSize: "12px",
+    padding: "16px 8px",
+    fontStyle: "italic",
+  },
+  moreBookingsIndicator: {
+    textAlign: "center",
+    color: "#70757a",
+    fontSize: "11px",
+    padding: "4px",
+    fontStyle: "italic",
   },
 };
 
