@@ -71,6 +71,8 @@ function App() {
     useState(false);
   const [cancellationRequests, setCancellationRequests] = useState([]);
   const [maxCancellationsToShow, setMaxCancellationsToShow] = useState(5);
+const [selectedCancellationRequest, setSelectedCancellationRequest] = useState(null);
+const [showCancellationRequestModal, setShowCancellationRequestModal] = useState(false);
 
   // List of available facilities
   useEffect(() => {
@@ -157,6 +159,124 @@ function App() {
       }
     }
   };
+
+  const renderCancellationRequestModal = () => {
+  if (!showCancellationRequestModal || !selectedCancellationRequest) return null;
+
+  const handleApprove = async () => {
+    try {
+      // Delete the original reservation
+      await deleteDoc(doc(db, "reservations", selectedCancellationRequest.originalReservationId));
+      
+      // Delete the cancellation request
+      await deleteDoc(doc(db, "cancellationRequests", selectedCancellationRequest.id));
+      
+      // Update local state
+      setCancellationRequests(cancellationRequests.filter(
+        req => req.id !== selectedCancellationRequest.id
+      ));
+      
+      setShowCancellationRequestModal(false);
+      alert("Cancellation approved and reservation removed");
+    } catch (error) {
+      console.error("Error approving cancellation:", error);
+      alert("Error approving cancellation. Please try again.");
+    }
+    await fetchReservations();
+  };
+
+  const handleDecline = async () => {
+    try {
+      // Just delete the cancellation request
+      await deleteDoc(doc(db, "cancellationRequests", selectedCancellationRequest.id));
+      
+      // Update local state
+      setCancellationRequests(cancellationRequests.filter(
+        req => req.id !== selectedCancellationRequest.id
+      ));
+      
+      setShowCancellationRequestModal(false);
+      alert("Cancellation request declined");
+    } catch (error) {
+      console.error("Error declining cancellation:", error);
+      alert("Error declining cancellation. Please try again.");
+    }
+  };
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modal}>
+        <div style={styles.modalHeader}>
+          <h2>Cancellation Request</h2>
+          <button
+            style={styles.closeButton}
+            onClick={() => setShowCancellationRequestModal(false)}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: "24px" }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Facility:</label>
+            <div>{selectedCancellationRequest.facility}</div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Date:</label>
+            <div>{selectedCancellationRequest.date}</div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Time:</label>
+            <div>
+              {selectedCancellationRequest.timeStart} - {selectedCancellationRequest.timeEnd}
+            </div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Organizer:</label>
+            <div>{selectedCancellationRequest.organizer}</div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Attendees:</label>
+            <div>{selectedCancellationRequest.attendees}</div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Requested by:</label>
+            <div>{selectedCancellationRequest.employeeID}</div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Requested at:</label>
+            <div>
+              {new Date(selectedCancellationRequest.requestedAt).toLocaleString()}
+            </div>
+          </div>
+
+          <div style={styles.formActions}>
+            <button
+              style={styles.deleteButton}
+              onClick={handleDecline}
+            >
+              Decline
+            </button>
+            <button
+              style={styles.submitButton}
+              onClick={handleApprove}
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+  
 
   const toggleBookings = async () => {
     const newState = !upcomingBookingsOpen;
@@ -581,6 +701,7 @@ function App() {
       console.error("Error saving reservation:", error);
       alert("Error saving reservation. Please try again.");
     }
+    
   };
 
   // Handle reservation deletion
@@ -1480,8 +1601,13 @@ function App() {
                         backgroundColor: getFacilityColorByName(
                           request.facility
                         ),
-                        border: "2px solid #FF5722", // Orange border to distinguish cancellation requests
+                        border: "2px solid #FF5722", 
+                        cursor: "pointer",// Orange border to distinguish cancellation requests
                       }}
+                       onClick={() => {
+                          setSelectedCancellationRequest(request);
+                          setShowCancellationRequestModal(true);
+                       }}
                     >
                       <div style={styles.bookingTime}>
                         {request.timeStart} - {request.timeEnd}
@@ -1582,6 +1708,7 @@ function App() {
       {renderEditFacilityModal()}
       {renderDeleteFacilityModal()}
       {renderCancelModal()}
+      {renderCancellationRequestModal()}
     </div>
   );
 }
