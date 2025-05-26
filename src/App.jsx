@@ -405,13 +405,29 @@ function App() {
     return conflicts.length === 0;
   };
 
+  // Add this function to check if an employeeID is an admin
+  const isAdminEmployeeID = async (employeeID) => {
+    try {
+      const adminQuery = query(
+        collection(db, "admin"),
+        where("employeeID", "==", employeeID)
+      );
+      const adminSnapshot = await getDocs(adminQuery);
+      return !adminSnapshot.empty;
+    } catch (error) {
+      console.error("Error checking admin status:", error);
+      return false;
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // For edits, require employee ID to match original
+    // For edits, require employee ID to match original OR be an admin
     if (modalMode === "edit") {
-      if (formData.employeeID !== originalemployeeID) {
+      const isAdmin = await isAdminEmployeeID(formData.employeeID);
+      if (formData.employeeID !== originalemployeeID && !isAdmin) {
         alert("Employee ID does not match the original reservation");
         return;
       }
@@ -430,7 +446,6 @@ function App() {
       parseInt(timeEndParts[0], 10),
       parseInt(timeEndParts[1], 10)
     );
-
     if (endTime <= startTime) {
       alert("End time must be after start time");
       return;
@@ -452,7 +467,6 @@ function App() {
           attendees: parseInt(formData.attendees, 10) || 1,
           employeeID: formData.employeeID,
         });
-
         // Update local state
         setReservations([
           ...reservations,
@@ -469,9 +483,8 @@ function App() {
           ...formData,
           date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
-          employeeID: originalemployeeID,
+          employeeID: formData.employeeID, // Use the form's employeeID (allows admin to change it)
         });
-
         // Update local state
         setReservations(
           reservations.map((res) =>
@@ -481,13 +494,12 @@ function App() {
                   ...formData,
                   date: new Date(formData.date),
                   attendees: parseInt(formData.attendees, 10) || 1,
-                  employeeID: originalemployeeID,
+                  employeeID: formData.employeeID, // Use the form's employeeID
                 }
               : res
           )
         );
       }
-
       setShowModal(false);
       resetForm();
     } catch (error) {
@@ -500,8 +512,9 @@ function App() {
   const handleDelete = async () => {
     if (!selectedReservation) return;
 
-    // Require employee ID to match before deletion
-    if (formData.employeeID !== originalemployeeID) {
+    // Require employee ID to match before deletion OR be an admin
+    const isAdmin = await isAdminEmployeeID(formData.employeeID);
+    if (formData.employeeID !== originalemployeeID && !isAdmin) {
       alert("Employee ID does not match the original reservation");
       return;
     }
@@ -509,12 +522,10 @@ function App() {
     if (window.confirm("Are you sure you want to delete this reservation?")) {
       try {
         await deleteDoc(doc(db, "reservations", selectedReservation.id));
-
         // Update local state
         setReservations(
           reservations.filter((res) => res.id !== selectedReservation.id)
         );
-
         setShowModal(false);
         resetForm();
       } catch (error) {
@@ -523,7 +534,6 @@ function App() {
       }
     }
   };
-
   // Reset form to default values
   const resetForm = () => {
     setFormData({
