@@ -63,6 +63,15 @@ function App() {
   // Filter state
   const [facilityFilter, setFacilityFilter] = useState("all");
 
+  // Cancellation request states
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelEmployeeID, setCancelEmployeeID] = useState("");
+  const [cancelError, setCancelError] = useState("");
+  const [cancellationRequestsOpen, setCancellationRequestsOpen] =
+    useState(false);
+  const [cancellationRequests, setCancellationRequests] = useState([]);
+  const [maxCancellationsToShow, setMaxCancellationsToShow] = useState(5);
+
   // List of available facilities
   useEffect(() => {
     const fetchFacilities = async () => {
@@ -82,6 +91,72 @@ function App() {
     };
     fetchFacilities();
   }, []);
+
+  const handleCancelReservation = () => {
+    setShowCancelModal(true);
+    setCancelEmployeeID("");
+    setCancelError("");
+  };
+
+  const handleCancelConfirm = async () => {
+    if (!cancelEmployeeID.trim()) {
+      setCancelError("Employee ID is required");
+      return;
+    }
+
+    try {
+      // Save to cancellation requests collection
+      const cancellationData = {
+        attendees: selectedReservation.attendees,
+        date: formatDate(selectedReservation.date),
+        employeeID: cancelEmployeeID.toUpperCase(),
+        facility: selectedReservation.facility,
+        organizer: selectedReservation.organizer,
+        timeStart: selectedReservation.timeStart,
+        timeEnd: selectedReservation.timeEnd,
+        originalReservationId: selectedReservation.id,
+        requestedAt: new Date().toISOString(),
+      };
+
+      await addDoc(collection(db, "cancellationRequests"), cancellationData);
+
+      setShowCancelModal(false);
+      setShowModal(false);
+      resetForm();
+      alert("Cancellation request submitted successfully");
+    } catch (error) {
+      console.error("Error submitting cancellation request:", error);
+      setCancelError(
+        "Error submitting cancellation request. Please try again."
+      );
+    }
+  };
+
+  const toggleCancellationRequests = async () => {
+    const newState = !cancellationRequestsOpen;
+    setCancellationRequestsOpen(newState);
+
+    if (newState) {
+      try {
+        const snapshot = await getDocs(collection(db, "cancellationRequests"));
+        const fetched = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        // Sort by request date (most recent first)
+        const sortedRequests = fetched.sort((a, b) => {
+          const dateA = new Date(a.requestedAt || a.date);
+          const dateB = new Date(b.requestedAt || b.date);
+          return dateB - dateA;
+        });
+
+        setCancellationRequests(sortedRequests);
+      } catch (error) {
+        console.error("Error fetching cancellation requests:", error);
+      }
+    }
+  };
 
   const toggleBookings = async () => {
     const newState = !upcomingBookingsOpen;
@@ -405,13 +480,29 @@ function App() {
     return conflicts.length === 0;
   };
 
+  // Add this function to check if an employeeID is an admin
+  const isAdminEmployeeID = async (employeeID) => {
+    try {
+      const adminQuery = query(
+        collection(db, "admin"),
+        where("employeeID", "==", employeeID)
+      );
+      const adminSnapshot = await getDocs(adminQuery);
+      return !adminSnapshot.empty;
+    } catch (error) {
+      console.error("Error checking admin status:", error);
+      return false;
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // For edits, require employee ID to match original
+    // For edits, require employee ID to match original OR be an admin
     if (modalMode === "edit") {
-      if (formData.employeeID !== originalemployeeID) {
+      const isAdmin = await isAdminEmployeeID(formData.employeeID);
+      if (formData.employeeID !== originalemployeeID && !isAdmin) {
         alert("Employee ID does not match the original reservation");
         return;
       }
@@ -430,7 +521,6 @@ function App() {
       parseInt(timeEndParts[0], 10),
       parseInt(timeEndParts[1], 10)
     );
-
     if (endTime <= startTime) {
       alert("End time must be after start time");
       return;
@@ -452,7 +542,6 @@ function App() {
           attendees: parseInt(formData.attendees, 10) || 1,
           employeeID: formData.employeeID,
         });
-
         // Update local state
         setReservations([
           ...reservations,
@@ -469,9 +558,8 @@ function App() {
           ...formData,
           date: formData.date,
           attendees: parseInt(formData.attendees, 10) || 1,
-          employeeID: originalemployeeID,
+          employeeID: formData.employeeID, // Use the form's employeeID (allows admin to change it)
         });
-
         // Update local state
         setReservations(
           reservations.map((res) =>
@@ -481,13 +569,12 @@ function App() {
                   ...formData,
                   date: new Date(formData.date),
                   attendees: parseInt(formData.attendees, 10) || 1,
-                  employeeID: originalemployeeID,
+                  employeeID: formData.employeeID, // Use the form's employeeID
                 }
               : res
           )
         );
       }
-
       setShowModal(false);
       resetForm();
     } catch (error) {
@@ -500,8 +587,9 @@ function App() {
   const handleDelete = async () => {
     if (!selectedReservation) return;
 
-    // Require employee ID to match before deletion
-    if (formData.employeeID !== originalemployeeID) {
+    // Require employee ID to match before deletion OR be an admin
+    const isAdmin = await isAdminEmployeeID(formData.employeeID);
+    if (formData.employeeID !== originalemployeeID && !isAdmin) {
       alert("Employee ID does not match the original reservation");
       return;
     }
@@ -509,12 +597,10 @@ function App() {
     if (window.confirm("Are you sure you want to delete this reservation?")) {
       try {
         await deleteDoc(doc(db, "reservations", selectedReservation.id));
-
         // Update local state
         setReservations(
           reservations.filter((res) => res.id !== selectedReservation.id)
         );
-
         setShowModal(false);
         resetForm();
       } catch (error) {
@@ -523,7 +609,6 @@ function App() {
       }
     }
   };
-
   // Reset form to default values
   const resetForm = () => {
     setFormData({
@@ -993,6 +1078,85 @@ function App() {
     );
   };
 
+  const renderCancelModal = () => {
+    if (!showCancelModal) return null;
+
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>Cancel Reservation</h2>
+            <button
+              style={styles.closeButton}
+              onClick={() => {
+                setShowCancelModal(false);
+                setCancelEmployeeID("");
+                setCancelError("");
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{ padding: "24px" }}>
+            <p>
+              Are you sure you want to submit a cancellation request for this
+              reservation?
+            </p>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="cancelEmployeeID" style={styles.label}>
+                Employee ID
+                <span style={{ color: "red", marginLeft: "5px" }}>
+                  (required for changes)
+                </span>
+              </label>
+              <input
+                type="text"
+                id="cancelEmployeeID"
+                value={cancelEmployeeID}
+                onChange={(e) => {
+                  setCancelEmployeeID(e.target.value.toUpperCase());
+                  setCancelError("");
+                }}
+                style={styles.input}
+                required
+                placeholder="Enter your employee ID"
+              />
+            </div>
+
+            {cancelError && (
+              <div style={{ color: "red", marginBottom: "15px" }}>
+                {cancelError}
+              </div>
+            )}
+
+            <div style={styles.formActions}>
+              <button
+                type="button"
+                style={styles.cancelButton}
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelEmployeeID("");
+                  setCancelError("");
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                style={styles.deleteButton}
+                onClick={handleCancelConfirm}
+              >
+                Submit Cancellation Request
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render the reservation form modal
   const renderModal = () => {
     if (!showModal) return null;
@@ -1147,13 +1311,25 @@ function App() {
 
             <div style={styles.formActions}>
               {modalMode === "edit" && (
-                <button
-                  type="button"
-                  style={styles.deleteButton}
-                  onClick={handleDelete}
-                >
-                  Delete
-                </button>
+                <>
+                  <button
+                    type="button"
+                    style={styles.deleteButton}
+                    onClick={handleDelete}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.deleteButton,
+                      backgroundColor: "#FF9800",
+                    }}
+                    onClick={handleCancelReservation}
+                  >
+                    Cancel
+                  </button>
+                </>
               )}
               <button type="submit" style={styles.submitButton}>
                 {modalMode === "create" ? "Create" : "Update"}
@@ -1259,6 +1435,75 @@ function App() {
           )}
         </div>
 
+        <div style={styles.filterSection}>
+          <div style={styles.bookingsHeader}>
+            <h3 style={styles.filterTitle}>Cancellation Requests</h3>
+            <div style={styles.bookingsControls}>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={maxCancellationsToShow}
+                onChange={(e) =>
+                  setMaxCancellationsToShow(parseInt(e.target.value) || 5)
+                }
+                style={styles.limitInput}
+                title="Max cancellation requests to show"
+              />
+              <button
+                onClick={toggleCancellationRequests}
+                style={styles.upcomingBookingsButton}
+              >
+                {cancellationRequestsOpen ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          {cancellationRequestsOpen && (
+            <div style={styles.bookingsContainer}>
+              {cancellationRequests.length === 0 ? (
+                <div style={styles.noBookingsMessage}>
+                  No cancellation requests found.
+                </div>
+              ) : (
+                cancellationRequests
+                  .filter((request) => {
+                    if (facilityFilter === "all") return true;
+                    return request.facility === facilityFilter;
+                  })
+                  .slice(0, maxCancellationsToShow)
+                  .map((request) => (
+                    <div
+                      key={request.id}
+                      style={{
+                        ...styles.bookingItem,
+                        backgroundColor: getFacilityColorByName(
+                          request.facility
+                        ),
+                        border: "2px solid #FF5722", // Orange border to distinguish cancellation requests
+                      }}
+                    >
+                      <div style={styles.bookingTime}>
+                        {request.timeStart} - {request.timeEnd}
+                      </div>
+                      <div style={styles.bookingTitle}>{request.organizer}</div>
+                      <div style={styles.bookingDetails}>
+                        {request.facility} • {request.attendees} people
+                      </div>
+                      <div style={styles.bookingDate}>{request.date}</div>
+                    </div>
+                  ))
+              )}
+              {cancellationRequests.length > maxCancellationsToShow && (
+                <div style={styles.moreBookingsIndicator}>
+                  +{cancellationRequests.length - maxCancellationsToShow} more
+                  requests
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div style={styles.legendSection}>
           <div
             style={{
@@ -1336,6 +1581,7 @@ function App() {
       {renderAddFacilityModal()}
       {renderEditFacilityModal()}
       {renderDeleteFacilityModal()}
+      {renderCancelModal()}
     </div>
   );
 }
