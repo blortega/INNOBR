@@ -57,6 +57,7 @@ function App() {
     attendees: 1,
     organizer: "",
     facility: "Activity Center A",
+    notes: "",
     employeeID: "",
   });
 
@@ -117,6 +118,7 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
         timeStart: selectedReservation.timeStart,
         timeEnd: selectedReservation.timeEnd,
         originalReservationId: selectedReservation.id,
+        notes: selectedReservation.notes,
         requestedAt: new Date().toISOString(),
       };
 
@@ -549,6 +551,7 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
       attendees: reservation.attendees,
       organizer: reservation.organizer,
       facility: reservation.facility,
+      notes: reservation.notes,
       employeeID: "",
     });
     setModalMode("edit");
@@ -739,6 +742,7 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
       attendees: 1,
       organizer: "",
       facility: "Activity Center A",
+      notes: "",
       employeeID: "",
     });
     setSelectedReservation(null);
@@ -1403,6 +1407,22 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
                   required
                 />
               </div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label htmlFor="notes" style={styles.label}>
+                Notes:
+              </label>
+              <input
+                type="text"
+                id="notes"
+                name="notes"
+                value={formData.notes}
+                onChange={handleInputChange}
+                style={styles.input}
+                required={modalMode === "create"}
+                placeholder={"Additional notes: ex. Food and Beverages"}
+              />
             </div>
 
             <div style={styles.formGroup}>
@@ -2081,24 +2101,24 @@ const styles = {
   },
   bookingTime: {
     fontWeight: "600",
-    fontSize: "11px",
+    fontSize: "15px",
     marginBottom: "2px",
   },
   bookingTitle: {
     fontWeight: "500",
-    fontSize: "12px",
+    fontSize: "15px",
     marginBottom: "2px",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
   bookingDetails: {
-    fontSize: "10px",
+    fontSize: "15px",
     opacity: "0.9",
     marginBottom: "2px",
   },
   bookingDate: {
-    fontSize: "10px",
+    fontSize: "15px",
     opacity: "0.8",
   },
   noBookingsMessage: {
