@@ -12,6 +12,10 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import emailjs from "@emailjs/browser";
+
+const EMAILJS_PUBLIC_KEY = "3tdPCfaKN0LSh7lgi";
+emailjs.init(EMAILJS_PUBLIC_KEY);
 
 function App() {
   // States for calendar
@@ -72,8 +76,10 @@ function App() {
     useState(false);
   const [cancellationRequests, setCancellationRequests] = useState([]);
   const [maxCancellationsToShow, setMaxCancellationsToShow] = useState(5);
-const [selectedCancellationRequest, setSelectedCancellationRequest] = useState(null);
-const [showCancellationRequestModal, setShowCancellationRequestModal] = useState(false);
+  const [selectedCancellationRequest, setSelectedCancellationRequest] =
+    useState(null);
+  const [showCancellationRequestModal, setShowCancellationRequestModal] =
+    useState(false);
 
   // List of available facilities
   useEffect(() => {
@@ -123,6 +129,7 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
       };
 
       await addDoc(collection(db, "cancellationRequests"), cancellationData);
+      await sendReservationEmail(selectedReservation, "Cancelled");
 
       setShowCancelModal(false);
       setShowModal(false);
@@ -133,6 +140,42 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
       setCancelError(
         "Error submitting cancellation request. Please try again."
       );
+    }
+  };
+
+  const sendReservationEmail = async (reservationData, status) => {
+    // Format date for better display (e.g., "May 23, 2025")
+    let formattedDate;
+    if (typeof reservationData.date === "string") {
+      // Convert string date to Date object, then format
+      const dateObj = new Date(reservationData.date);
+      formattedDate = dateObj.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } else {
+      formattedDate = reservationData.date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    }
+
+    const templateParams = {
+      status: status, // "Reserved" or "Cancelled"
+      user_name: reservationData.organizer,
+      room_name: reservationData.facility,
+      booking_date: formattedDate, // This will be like "May 23, 2025"
+      booking_time: `${reservationData.timeStart} - ${reservationData.timeEnd}`,
+      year: new Date().getFullYear(),
+    };
+
+    try {
+      await emailjs.send("service_xogngdj", "template_01jzw8d", templateParams);
+      console.log("Email sent successfully");
+    } catch (error) {
+      console.error("Failed to send email:", error);
     }
   };
 
@@ -163,122 +206,132 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
   };
 
   const renderCancellationRequestModal = () => {
-  if (!showCancellationRequestModal || !selectedCancellationRequest) return null;
+    if (!showCancellationRequestModal || !selectedCancellationRequest)
+      return null;
 
-  const handleApprove = async () => {
-    try {
-      // Delete the original reservation
-      await deleteDoc(doc(db, "reservations", selectedCancellationRequest.originalReservationId));
-      
-      // Delete the cancellation request
-      await deleteDoc(doc(db, "cancellationRequests", selectedCancellationRequest.id));
-      
-      // Update local state
-      setCancellationRequests(cancellationRequests.filter(
-        req => req.id !== selectedCancellationRequest.id
-      ));
-      
-      setShowCancellationRequestModal(false);
-      alert("Cancellation approved and reservation removed");
-    } catch (error) {
-      console.error("Error approving cancellation:", error);
-      alert("Error approving cancellation. Please try again.");
-    }
-    await fetchReservations();
-  };
+    const handleApprove = async () => {
+      try {
+        // Delete the original reservation
+        await deleteDoc(
+          doc(
+            db,
+            "reservations",
+            selectedCancellationRequest.originalReservationId
+          )
+        );
 
-  const handleDecline = async () => {
-    try {
-      // Just delete the cancellation request
-      await deleteDoc(doc(db, "cancellationRequests", selectedCancellationRequest.id));
-      
-      // Update local state
-      setCancellationRequests(cancellationRequests.filter(
-        req => req.id !== selectedCancellationRequest.id
-      ));
-      
-      setShowCancellationRequestModal(false);
-      alert("Cancellation request declined");
-    } catch (error) {
-      console.error("Error declining cancellation:", error);
-      alert("Error declining cancellation. Please try again.");
-    }
-  };
+        // Delete the cancellation request
+        await deleteDoc(
+          doc(db, "cancellationRequests", selectedCancellationRequest.id)
+        );
 
-  return (
-    <div style={styles.modalOverlay}>
-      <div style={styles.modal}>
-        <div style={styles.modalHeader}>
-          <h2>Cancellation Request</h2>
-          <button
-            style={styles.closeButton}
-            onClick={() => setShowCancellationRequestModal(false)}
-          >
-            ×
-          </button>
-        </div>
+        // Update local state
+        setCancellationRequests(
+          cancellationRequests.filter(
+            (req) => req.id !== selectedCancellationRequest.id
+          )
+        );
 
-        <div style={{ padding: "24px" }}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Facility:</label>
-            <div>{selectedCancellationRequest.facility}</div>
-          </div>
+        setShowCancellationRequestModal(false);
+        alert("Cancellation approved and reservation removed");
+      } catch (error) {
+        console.error("Error approving cancellation:", error);
+        alert("Error approving cancellation. Please try again.");
+      }
+      await fetchReservations();
+    };
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Date:</label>
-            <div>{selectedCancellationRequest.date}</div>
-          </div>
+    const handleDecline = async () => {
+      try {
+        // Just delete the cancellation request
+        await deleteDoc(
+          doc(db, "cancellationRequests", selectedCancellationRequest.id)
+        );
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Time:</label>
-            <div>
-              {selectedCancellationRequest.timeStart} - {selectedCancellationRequest.timeEnd}
-            </div>
-          </div>
+        // Update local state
+        setCancellationRequests(
+          cancellationRequests.filter(
+            (req) => req.id !== selectedCancellationRequest.id
+          )
+        );
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Organizer:</label>
-            <div>{selectedCancellationRequest.organizer}</div>
-          </div>
+        setShowCancellationRequestModal(false);
+        alert("Cancellation request declined");
+      } catch (error) {
+        console.error("Error declining cancellation:", error);
+        alert("Error declining cancellation. Please try again.");
+      }
+    };
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Attendees:</label>
-            <div>{selectedCancellationRequest.attendees}</div>
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Requested by:</label>
-            <div>{selectedCancellationRequest.employeeID}</div>
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Requested at:</label>
-            <div>
-              {new Date(selectedCancellationRequest.requestedAt).toLocaleString()}
-            </div>
-          </div>
-
-          <div style={styles.formActions}>
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.modalHeader}>
+            <h2>Cancellation Request</h2>
             <button
-              style={styles.deleteButton}
-              onClick={handleDecline}
+              style={styles.closeButton}
+              onClick={() => setShowCancellationRequestModal(false)}
             >
-              Decline
+              ×
             </button>
-            <button
-              style={styles.submitButton}
-              onClick={handleApprove}
-            >
-              Approve
-            </button>
+          </div>
+
+          <div style={{ padding: "24px" }}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Facility:</label>
+              <div>{selectedCancellationRequest.facility}</div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Date:</label>
+              <div>{selectedCancellationRequest.date}</div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Time:</label>
+              <div>
+                {selectedCancellationRequest.timeStart} -{" "}
+                {selectedCancellationRequest.timeEnd}
+              </div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Organizer:</label>
+              <div>{selectedCancellationRequest.organizer}</div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Attendees:</label>
+              <div>{selectedCancellationRequest.attendees}</div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Requested by:</label>
+              <div>{selectedCancellationRequest.employeeID}</div>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Requested at:</label>
+              <div>
+                {new Date(
+                  selectedCancellationRequest.requestedAt
+                ).toLocaleString()}
+              </div>
+            </div>
+
+            <div style={styles.formActions}>
+              <button style={styles.deleteButton} onClick={handleDecline}>
+                Decline
+              </button>
+              <button style={styles.submitButton} onClick={handleApprove}>
+                Approve
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
-
-  
+    );
+  };
 
   const toggleBookings = async () => {
     const newState = !upcomingBookingsOpen;
@@ -675,6 +728,7 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
             attendees: parseInt(formData.attendees, 10) || 1,
           },
         ]);
+        await sendReservationEmail(formData, "Reserved");
       } else if (modalMode === "edit" && selectedReservation) {
         // Update existing reservation
         await updateDoc(doc(db, "reservations", selectedReservation.id), {
@@ -704,7 +758,6 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
       console.error("Error saving reservation:", error);
       alert("Error saving reservation. Please try again.");
     }
-    
   };
 
   // Handle reservation deletion
@@ -1621,13 +1674,13 @@ const [showCancellationRequestModal, setShowCancellationRequestModal] = useState
                         backgroundColor: getFacilityColorByName(
                           request.facility
                         ),
-                        border: "2px solid #FF5722", 
-                        cursor: "pointer",// Orange border to distinguish cancellation requests
+                        border: "2px solid #FF5722",
+                        cursor: "pointer", // Orange border to distinguish cancellation requests
                       }}
-                       onClick={() => {
-                          setSelectedCancellationRequest(request);
-                          setShowCancellationRequestModal(true);
-                       }}
+                      onClick={() => {
+                        setSelectedCancellationRequest(request);
+                        setShowCancellationRequestModal(true);
+                      }}
                     >
                       <div style={styles.bookingTime}>
                         {request.timeStart} - {request.timeEnd}
